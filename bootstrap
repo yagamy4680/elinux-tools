@@ -1,10 +1,38 @@
 #!/bin/bash
 #
-BOOTSTRAP_DOTFILE="$(dirname $0)/.bootstrap"
+CURRENT=$(pwd)
+cd $(dirname $0)
+ROOT_DIR=$(pwd)
+BIN_DIR="${ROOT_DIR}/bin"
+cd ${CURRENT}
 
+# Check .bootstrap file
+#
+BOOTSTRAP_DOTFILE="${ROOT_DIR}/.bootstrap"
 [ -f "${BOOTSTRAP_DOTFILE}" ] && echo "already bootstrapped" && exit 1
 
+
+# Initialize all external repository dependencies
+#
 echo "initialize external repositories"
 git submodule update --init --recursive
 
+
+# Add BIN_DIR to PATH for BASH environment.
+#
+BASHRC="${HOME}/.bashrc"
+if [ -f "${BASHRC}" ]; then
+	if [ "" == "$(cat ${BASHRC} | grep "^export PATH" | grep "${BIN_DIR}")" ]; then
+		echo "add ${BIN_DIR} to ${BASHRC}"
+		echo "export PATH=\${PATH}:${BIN_DIR}" >> ${BASHRC}
+	else
+		echo "already add ${BIN_DIR} to ${BASHRC}"
+	fi
+else
+	echo "missing ${BASHRC} ..."
+fi
+
+
+# Mark .bootstrap file
+#
 date > ${BOOTSTRAP_DOTFILE}
