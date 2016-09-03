@@ -1,0 +1,10 @@
+#!/bin/bash
+#
+BOOTSTRAP_DOTFILE="$(dirname $0)/.bootstrap"
+
+[ -f "${BOOTSTRAP_DOTFILE}" ] && echo "already bootstrapped" && exit 1
+
+echo "initialize external repositories"
+git submodule update --init --recursive
+
+date > ${BOOTSTRAP_DOTFILE}
