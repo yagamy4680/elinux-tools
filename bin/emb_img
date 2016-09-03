@@ -2,6 +2,136 @@
 #
 ##DOC:	image file manipulation
 
+function backup_bootloaders {
+	local TYPE=$1
+	local DEVICE=$2
+	local TARGET_DIR=$3
+	local BOARD_DIR="${TARGET_DIR}/boards/${TYPE}"
+
+	mkdir -p ${BOARD_DIR}
+	INFO "backup bootloaders for ${TYPE}"
+
+	case "${TYPE}" in
+		beaglebone)
+			RUN_CMD dd if=${DEVICE} of=${BOARD_DIR}/MLO count=1 seek=1 conv=notrunc bs=128k
+			RUN_CMD dd if=${DEVICE} of=${BOARD_DIR}/uboot count=2 seek=1 conv=notrunc bs=384k
+			;;
+
+		*)
+			INFO "no bootloaders to backup"
+			;;
+	esac
+}
+
+function backup {
+	local CURRENT=$(pwd)
+	local TYPE=$1
+	local SRC=$2
+	local TARGET_DIR=$3
+	[ "" == "${TYPE}" ] && ERR "please specify type: beaglebone, raspberry" && exit 1
+	[ "" == "${SRC}" ] && ERR "please specify source image or block device" && exit 2
+	[ "" == "${TARGET_DIR}" ] && ERR "please specify target directory to store the backup contents" && exit 3
+	if [ -f "${SRC}" ] || [ -b "${SRC}" ]; then
+		INFO "valid source: ${SRC}"
+	else
+		ERR "invalid source: ${SRC}"
+		exit 4
+	fi
+
+	check_prerequisites kpartx losetup parted
+
+	local DEVICE="${SRC}"
+	local DEVICE_MAPPING="false"
+
+	# Mount the image file to a loop-back device
+	#
+	if [ -f "${SRC}" ]; then
+		RUN_CMD_STREAMING kpartx -a -u -v -s ${SRC}
+		DEVICE=$(losetup -a | grep ${SRC} | awk -F':' '{print $1}')
+		if [ "" == "${DEVICE}" ]; then 
+			ERR "failed to mount ${SRC}"
+			kpartx -d ${SRC}
+			exit 5
+		else
+			INFO "successfully mount ${SRC} to ${DEVICE}"
+			DEVICE_MAPPING="true"
+		fi
+	fi
+
+	RUN_CMD rm -rf ${TARGET_DIR}
+	RUN_CMD mkdir -p ${TARGET_DIR}
+
+	INFO "backup bootloaders"
+	backup_bootloaders ${TYPE} ${DEVICE} ${TARGET_DIR}
+
+	INFO "dump partition table"
+	sfdisk -d ${DEVICE} > ${TARGET_DIR}/partitions.sfdisk.dump
+
+	local PARTITION_DIR="${TARGET_DIR}/partitions"
+	local PARTITION_FORMAT_DUMP="${TARGET_DIR}/partitions.format.dump"
+	echo "# Partition Filesystem Formats" > ${PARTITION_FORMAT_DUMP}
+
+	IFS=$'\n'
+	local PARTITION_LIST=($(parted ${DEVICE} print | grep "^ " | sed 's/^ //g'))
+	unset IFS
+
+	for px in "${PARTITION_LIST[@]}"; do
+		local PART_NUM=$(echo $px | awk '{print $1}')
+		local PART_FORMAT=$(echo $px | awk '{print $6}')
+		if [ "true" == "${DEVICE_MAPPING}" ]; then
+			local PART_DEVICE="/dev/mapper/$(basename ${DEVICE})p${PART_NUM}"
+		else
+			local PART_DEVICE="$(fdisk -l ${DEVICE} | grep "^${DEVICE}*${PART_NUM}" | awk '{print $1}')"
+		fi
+		INFO "$(LIGHT_GREEN ${PART_DEVICE}) => $(YELLOW ${PART_FORMAT})"
+		echo -e "${PART_NUM}\t${PART_FORMAT}" >> ${PARTITION_FORMAT_DUMP}
+
+		local PART_SRC_DIR="/tmp/$(basename ${PART_DEVICE})"
+		local PART_DST_DIR="${PARTITION_DIR}/p${PART_NUM}"
+		[ "" != "$(mount | grep ${PART_DEVICE})" ] && RUN_CMD umount ${PART_DEVICE}
+		mkdir -p ${PART_SRC_DIR} 
+		mkdir -p ${PART_DST_DIR}
+		RUN_CMD mount ${PART_DEVICE} ${PART_SRC_DIR}
+		cd ${PART_SRC_DIR}
+		INFO "calculating total size of ${PART_SRC_DIR} ..."
+		local SIZE=$(du -sb . | awk '{print $1}')
+		INFO "size = $(printf "%'d" ${SIZE}) bytes"
+		tar cf - . | pv -s ${SIZE} | tar xf - -C ${PART_DST_DIR}
+		cd ${CURRENT}
+		RUN_CMD umount ${PART_DEVICE}
+		RUN_CMD rm -rf ${PART_SRC_DIR}
+	done
+
+	[ "true" == "${DEVICE_MAPPING}" ] && {
+		RUN_CMD_STREAMING kpartx -d ${SRC}
+	}
+
+	INFO "done."
+}
+
+function print_help {
+cat <<__EOF__
+Please specify subcommand...
+
+__EOF__
+}
+
 function emb_main {
-	INFO "hello world!!"
+	local SCRIPT=$1
+	local COMMAND=$2
+	shift
+	shift
+	[ "-h" == "${COMMAND}" ] && print_help && exit 0
+	[ "--help" == "${COMMAND}" ] && print_help && exit 0
+	INFO "COMMAND = $(LIGHT_GREEN ${COMMAND})"
+
+	case "${COMMAND}" in
+		backup)
+			${COMMAND} $@
+			;;
+		*)
+			print_help
+			exit 1
+			;;
+	esac
 }
