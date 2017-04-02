@@ -2,6 +2,28 @@
 #
 ##DOC:	perform several tests in development...
 
+function mycli_command_prerequisites {
+cat <<__EOF__
+kpartx
+losetup
+python2:colorama
+python2:aaa
+python3:colorama
+python3:aaa
+__EOF__
+}
+
+
+function mycli_command_help {
+cat <<__EOF__
+This is my command: $(LIGHT_GREEN $BASH_SOURCE)
+
+show another word
+	$(GRAY $0) $(YELLOW Hello) $(PURPLE World)
+__EOF__
+}
+
+
 function mycli_command_entry {
 	INFO "show all arguments:"
 	INFO "args[0] = $1"

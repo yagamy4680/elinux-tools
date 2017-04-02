@@ -1,14 +1,4 @@
 #!/bin/bash
+#
 
-function to_lower {
-	echo $1 | tr '[:upper:]' '[:lower:]'
-}
-
-function check_prerequisites {
-	for sw in "$@"; do
-		[ "" == "$(which ${sw})" ] && ERR "missing ${sw}, please install it" && exit 1
-		INFO "checking ${sw}"
-	done
-}
-
-echo "hello $0"
+echo "hello $BASH_SOURCE"
