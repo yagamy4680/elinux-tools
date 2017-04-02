@@ -1,0 +1,110 @@
+#!/bin/bash
+#
+##DOC:	dump device image (*.bin) to archive directory
+
+function mycli_command_prerequisites {
+cat <<__EOF__
+kpartx
+losetup
+blkid
+lsc
+jq
+__EOF__
+}
+
+
+function mycli_command_help {
+cat <<__EOF__
+${CLI_NAME} ${CLI_ACTION} [DEVICE IMAGE FILE] [ARCHIVE DIRECTORY]
+${CLI_NAME} ${CLI_ACTION} [DEVICE IMAGE URL] [ARCHIVE DIRECTORY]
+
+For example:
+	${CLI_NAME} ${CLI_ACTION} $(GREEN "/tmp/bone-ubuntu-14.04.3-console-armhf-2016-02-11-2gb.img" "/tmp/bb-14.04.3")
+	${CLI_NAME} ${CLI_ACTION} $(GREEN "/tmp/2017-03-02-raspbian-jessie-lite.img" "/tmp/rpb-jessie-lite")
+
+There are some extra flags:
+	- $(BLUE DUMP_AM335X_UBOOT_FROM_MBR), dump the uboot and MLO images from MBR, $(YELLOW false) by default.
+__EOF__
+}
+
+
+function cleanup_mounting_points {
+	local DEVICE_IMAGE_PATH=$1
+	local DEVICE_IMAGE_FILE=$(basename "${DEVICE_IMAGE_PATH}")
+	local LOOPBACK_DEVICE=$(losetup -a | grep "${DEVICE_IMAGE_FILE}" | awk -F':' '{print $1}')
+
+	[ "" == "${LOOPBACK_DEVICE}" ] && INFO "${DEVICE_IMAGE_FILE} is not mounted, no necessary to umount" && return 0
+	INFO "detect $(YELLOW ${LOOPBACK_DEVICE}) loopback device is mounted for ${DEVICE_IMAGE_PATH}"
+	
+	local LOOPBACK_DEVICE_NAME=$(basename ${LOOPBACK_DEVICE})
+	local MOUNT_POINTS=($(mount | grep "^/dev/mapper/${LOOPBACK_DEVICE_NAME}p" | awk '{print $1}'))
+
+	for mp in "${MOUNT_POINTS[@]}"; do
+		INFO "umounting $(YELLOW ${mp}) for $(mount | grep ${mp} | awk '{print $3}')"
+		umount ${mp}
+	done
+
+	INFO "using kpartx to umount ${DEVICE_IMAGE_PATH}"
+	kpartx -d ${DEVICE_IMAGE_PATH}
+	INFO "using losetup to delete loopback device ${LOOPBACK_DEVICE}"
+	losetup -d ${LOOPBACK_DEVICE}
+
+	[ "" != "$(losetup -a | grep ${DEVICE_IMAGE_FILE})" ] && ERR "failed to umount ${DEVICE_IMAGE_PATH}, please reboot linux to cleanup system first, or use $(YELLOW dmsetup info) to get more information, and remove the logical volume by $(YELLOW dmsetup remove)" && exit 1
+}
+
+
+function mycli_command_entry {
+	local DEVICE_IMAGE_PATH=$1
+	local DEVICE_IMAGE_FILE=$(basename "${DEVICE_IMAGE_PATH}")
+	local ARCHIVE_DIR=$2
+	[ ! -f "${DEVICE_IMAGE_PATH}" ] && ERR "missing ${DEVICE_IMAGE_PATH}" && exit 1
+	[ ! -d "${ARCHIVE_DIR}" ] && mkdir -p ${ARCHIVE_DIR}
+
+	local ARCHIVE_CONFIG_LS="${ARCHIVE_DIR}/config.ls"
+	local ARCHIVE_CONFIG_JSON="${ARCHIVE_DIR}/config.json"
+	rm -f ${ARCHIVE_CONFIG_LS}
+	echo "source: '${DEVICE_IMAGE_PATH}'" >> ${ARCHIVE_CONFIG_LS}
+
+	cleanup_mounting_points ${DEVICE_IMAGE_PATH}
+	kpartx -av ${DEVICE_IMAGE_PATH} || {
+		ERR "failed to mount image file ${DEVICE_IMAGE_PATH}"
+		exit 10
+	}
+
+	local LOOPBACK_DEVICE=$(losetup -a | grep "${DEVICE_IMAGE_FILE}" | awk -F':' '{print $1}')
+	local LOOPBACK_DEVICE_NAME=$(basename ${LOOPBACK_DEVICE})
+	local PARTITIONS=($(find /dev/mapper -name "${LOOPBACK_DEVICE_NAME}p*" | sort))
+	local PARITION_TABLE_INFO=$(mktemp /tmp/XXXXXX)
+	fdisk -l ${LOOPBACK_DEVICE} > ${PARITION_TABLE_INFO}
+
+	echo "partitions:" >> ${ARCHIVE_CONFIG_LS}
+	for p in "${PARTITIONS[@]}"; do
+		local TMP=$(mktemp /tmp/XXXXXX)
+		local PARTITION=$(basename $p)
+		local PARTITION_NUMBER=$(echo ${PARTITION} | sed "s/^${LOOPBACK_DEVICE_NAME}//g")
+		blkid $p | tr ' ' '\n' | grep -v "^$" > ${TMP}
+		[ "0" != "$?" ] && ERR "failed to get partition state for $p" && exit 11
+		local UUID=$(cat ${TMP} | grep "^UUID" | awk -F'=' '{print $2}' | sed 's/"//g')
+		local TYPE=$(cat ${TMP} | grep "^TYPE" | awk -F'=' '{print $2}' | sed 's/"//g')
+		local LABEL=$(cat ${TMP} | grep "^LABEL" | awk -F'=' '{print $2}' | sed 's/"//g')
+		rm -f ${TMP}
+
+		local START=$(cat ${PARITION_TABLE_INFO} | grep ${PARTITION} | awk '{print $2}')
+		local END=$(cat ${PARITION_TABLE_INFO} | grep ${PARTITION} | awk '{print $3}')
+		local BLOCKS=$(cat ${PARITION_TABLE_INFO} | grep ${PARTITION} | awk '{print $4}')
+		echo "    * id: '${PARTITION_NUMBER}'"   >> ${ARCHIVE_CONFIG_LS}
+		echo "      uuid: '${UUID}'"             >> ${ARCHIVE_CONFIG_LS}
+		echo "      type: '${TYPE}'"             >> ${ARCHIVE_CONFIG_LS}
+		echo "      label: '${LABEL}'"           >> ${ARCHIVE_CONFIG_LS}
+		echo "      start: '${START}'"           >> ${ARCHIVE_CONFIG_LS}
+		echo "      end: '${END}'"               >> ${ARCHIVE_CONFIG_LS}
+		echo "      size: '${BLOCKS} blocks'"    >> ${ARCHIVE_CONFIG_LS}
+	done
+	rm -f ${PARITION_TABLE_INFO}
+
+	kpartx -d ${DEVICE_IMAGE_PATH}
+	[ "" != "$(losetup -a | grep ${LOOPBACK_DEVICE})" ] && losetup -d ${LOOPBACK_DEVICE}
+
+	cat ${ARCHIVE_CONFIG_LS} | lsc -cjp > ${ARCHIVE_CONFIG_JSON}
+	cat ${ARCHIVE_CONFIG_JSON} | jq .
+}
