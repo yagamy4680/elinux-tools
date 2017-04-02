@@ -10,3 +10,5 @@ function check_prerequisites {
 		INFO "checking ${sw}"
 	done
 }
+
+echo "hello $0"

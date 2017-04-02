@@ -1,0 +1,10 @@
+#!/bin/bash
+#
+##DOC:	perform several tests in development...
+
+function mycli_command_entry {
+	INFO "show all arguments:"
+	INFO "args[0] = $1"
+	INFO "args[1] = $2"
+	INFO $@
+}
