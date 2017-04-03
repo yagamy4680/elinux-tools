@@ -41,15 +41,31 @@ function cleanup_mounting_points {
 
 	for mp in "${MOUNT_POINTS[@]}"; do
 		INFO "umounting $(YELLOW ${mp}) for $(mount | grep ${mp} | awk '{print $3}')"
-		umount ${mp}
+		RUN_CMD umount ${mp}
 	done
 
 	INFO "using kpartx to umount ${DEVICE_IMAGE_PATH}"
-	kpartx -d ${DEVICE_IMAGE_PATH}
+	RUN_CMD kpartx -d -s -v ${DEVICE_IMAGE_PATH}
+	RUN_CMD sync
+	RUN_CMD sleep 1
+	dmsetup info | grep "^Name" | grep ${LOOPBACK_DEVICE_NAME} | awk '{print $2}' | xargs -I{} sh -c "echo {}; dmsetup remove {}"
 	INFO "using losetup to delete loopback device ${LOOPBACK_DEVICE}"
-	losetup -d ${LOOPBACK_DEVICE}
+	[ "" != "$(losetup -a | grep ${LOOPBACK_DEVICE})" ] && RUN_CMD losetup -d ${LOOPBACK_DEVICE}
 
 	[ "" != "$(losetup -a | grep ${DEVICE_IMAGE_FILE})" ] && ERR "failed to umount ${DEVICE_IMAGE_PATH}, please reboot linux to cleanup system first, or use $(YELLOW dmsetup info) to get more information, and remove the logical volume by $(YELLOW dmsetup remove)" && exit 1
+}
+
+
+function output_partition_info {
+cat <<__EOF__ >> $1
+	'${PARTITION_NUMBER}':
+		uuid: '${P_UUID}'
+		type: '${P_TYPE}'
+		label: '${P_LABEL}'
+		start: '${P_START}'
+		end: '${P_END}'
+		size: '${P_BLOCKS} blocks'
+__EOF__
 }
 
 
@@ -57,16 +73,40 @@ function mycli_command_entry {
 	local DEVICE_IMAGE_PATH=$1
 	local DEVICE_IMAGE_FILE=$(basename "${DEVICE_IMAGE_PATH}")
 	local ARCHIVE_DIR=$2
+	local CURRENT=$(pwd)
 	[ ! -f "${DEVICE_IMAGE_PATH}" ] && ERR "missing ${DEVICE_IMAGE_PATH}" && exit 1
 	[ ! -d "${ARCHIVE_DIR}" ] && mkdir -p ${ARCHIVE_DIR}
 
+	local MOUNT_TOP_DIR="/mnt/${CLI_PROJECT_NAME}/$(date '+%Y%m%d%H%M%S')"
+
+	# Directory structure:
+	#
+	#     /ARCHIVE_DIR_ROOT
+	#          /config.json
+	#          /.verbose
+	#              /p1.filelist.txt
+	#              /p2.filelist.txt
+	#              /p3.filelist.txt
+	#          /partitions
+	#              /p1
+	#              /p2
+	#              /p3
+	#              ...
+	#
+	local ARCHIVE_PARTITION_DIR="${ARCHIVE_DIR}/partitions"
+	local ARCHIVE_VERBOSE_DIR="${ARCHIVE_DIR}/.verbose"
+	local ARCHIVE_OPT_DIR="${ARCHIVE_DIR}/opts"
 	local ARCHIVE_CONFIG_LS="${ARCHIVE_DIR}/config.ls"
 	local ARCHIVE_CONFIG_JSON="${ARCHIVE_DIR}/config.json"
 	rm -f ${ARCHIVE_CONFIG_LS}
+	rm -rf ${ARCHIVE_PARTITION_DIR}
+	mkdir -p ${ARCHIVE_PARTITION_DIR}
+	mkdir -p ${ARCHIVE_VERBOSE_DIR}
+	mkdir -p ${ARCHIVE_OPT_DIR}
 	echo "source: '${DEVICE_IMAGE_PATH}'" >> ${ARCHIVE_CONFIG_LS}
 
 	cleanup_mounting_points ${DEVICE_IMAGE_PATH}
-	kpartx -av ${DEVICE_IMAGE_PATH} || {
+	kpartx -a -s -v ${DEVICE_IMAGE_PATH} || {
 		ERR "failed to mount image file ${DEVICE_IMAGE_PATH}"
 		exit 10
 	}
@@ -77,11 +117,19 @@ function mycli_command_entry {
 	local PARITION_TABLE_INFO=$(mktemp /tmp/XXXXXX)
 	fdisk -l ${LOOPBACK_DEVICE} > ${PARITION_TABLE_INFO}
 
+	if [ "true" == "${DUMP_AM335X_UBOOT_FROM_MBR}" ]; then
+		local DIR="${ARCHIVE_OPT_DIR}/DUMP_AM335X_UBOOT_FROM_MBR"
+		mkdir -p ${DIR}
+		RUN_CMD dd if=${LOOPBACK_DEVICE} of=${DIR}/MLO count=1 seek=1 conv=notrunc bs=128k
+		RUN_CMD dd if=${LOOPBACK_DEVICE} of=${DIR}/uboot count=2 seek=1 conv=notrunc bs=384k
+	fi
+
 	echo "partitions:" >> ${ARCHIVE_CONFIG_LS}
 	for p in "${PARTITIONS[@]}"; do
-		local TMP=$(mktemp /tmp/XXXXXX)
 		local PARTITION=$(basename $p)
 		local PARTITION_NUMBER=$(echo ${PARTITION} | sed "s/^${LOOPBACK_DEVICE_NAME}//g")
+
+		local TMP=$(mktemp /tmp/XXXXXX)
 		blkid $p | tr ' ' '\n' | grep -v "^$" > ${TMP}
 		[ "0" != "$?" ] && ERR "failed to get partition state for $p" && exit 11
 		local UUID=$(cat ${TMP} | grep "^UUID" | awk -F'=' '{print $2}' | sed 's/"//g')
@@ -92,18 +140,42 @@ function mycli_command_entry {
 		local START=$(cat ${PARITION_TABLE_INFO} | grep ${PARTITION} | awk '{print $2}')
 		local END=$(cat ${PARITION_TABLE_INFO} | grep ${PARTITION} | awk '{print $3}')
 		local BLOCKS=$(cat ${PARITION_TABLE_INFO} | grep ${PARTITION} | awk '{print $4}')
-		echo "    * id: '${PARTITION_NUMBER}'"   >> ${ARCHIVE_CONFIG_LS}
-		echo "      uuid: '${UUID}'"             >> ${ARCHIVE_CONFIG_LS}
-		echo "      type: '${TYPE}'"             >> ${ARCHIVE_CONFIG_LS}
-		echo "      label: '${LABEL}'"           >> ${ARCHIVE_CONFIG_LS}
-		echo "      start: '${START}'"           >> ${ARCHIVE_CONFIG_LS}
-		echo "      end: '${END}'"               >> ${ARCHIVE_CONFIG_LS}
-		echo "      size: '${BLOCKS} blocks'"    >> ${ARCHIVE_CONFIG_LS}
-	done
-	rm -f ${PARITION_TABLE_INFO}
 
-	kpartx -d ${DEVICE_IMAGE_PATH}
-	[ "" != "$(losetup -a | grep ${LOOPBACK_DEVICE})" ] && losetup -d ${LOOPBACK_DEVICE}
+		local PARTITION_SRC_DIR="${MOUNT_TOP_DIR}/${PARTITION_NUMBER}"
+		local PARTITION_DST_DIR="${ARCHIVE_PARTITION_DIR}/${PARTITION_NUMBER}"
+		RUN_CMD mkdir -p ${PARTITION_SRC_DIR}
+		RUN_CMD mkdir -p ${PARTITION_DST_DIR}
+		RUN_CMD mount -t ${TYPE} ${p} ${PARTITION_SRC_DIR}
+		[ "0" != "$?" ] && ERR "failed to mount ${p} to ${PARTITION_SRC_DIR}" && break
+
+		cd ${PARTITION_SRC_DIR}
+		find . > "${ARCHIVE_VERBOSE_DIR}/${PARTITION_NUMBER}.filelist.txt"
+		local SIZE=$(du -sb . | awk '{print $1}')
+		INFO "${p} => $(printf "%'d" ${SIZE}) bytes"
+		tar cf - . | pv -s ${SIZE} | tar xf - -C ${PARTITION_DST_DIR}
+		cd ${CURRENT}
+		RUN_CMD sync
+		RUN_CMD sleep 2
+		RUN_CMD sync
+		RUN_CMD umount ${p}
+		RUN_CMD rm -rf ${PARTITION_SRC_DIR}
+
+		PARTITION_NUMBER=${PARTITION_NUMBER} \
+			P_UUID=${UUID} \
+			P_TYPE=${TYPE} \
+			P_LABEL=${LABEL} \
+			P_START=${START} \
+			P_END=${END} \
+			P_BLOCKS=${BLOCKS} \
+			output_partition_info ${ARCHIVE_CONFIG_LS}
+	done
+	RUN_CMD rm -f ${PARITION_TABLE_INFO}
+	RUN_CMD rm -rf ${MOUNT_TOP_DIR}
+
+	RUN_CMD kpartx -d -s -v ${DEVICE_IMAGE_PATH}
+	RUN_CMD sleep 1
+	dmsetup info | grep "^Name:" | awk '{print $2}' | xargs -I{} sh -c "dmsetup remove {}"
+	[ "" != "$(losetup -a | grep ${LOOPBACK_DEVICE})" ] && RUN_CMD losetup -d ${LOOPBACK_DEVICE}
 
 	cat ${ARCHIVE_CONFIG_LS} | lsc -cjp > ${ARCHIVE_CONFIG_JSON}
 	cat ${ARCHIVE_CONFIG_JSON} | jq .
