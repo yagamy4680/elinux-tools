@@ -115,15 +115,20 @@ function mycli_command_entry {
 	local LOOPBACK_DEVICE_NAME=$(basename ${LOOPBACK_DEVICE})
 	local PARTITIONS=($(find /dev/mapper -name "${LOOPBACK_DEVICE_NAME}p*" | sort))
 	local PARITION_TABLE_INFO=$(mktemp /tmp/XXXXXX)
-	fdisk -l ${LOOPBACK_DEVICE} > ${PARITION_TABLE_INFO}
 
+	echo "opts: " >> ${ARCHIVE_CONFIG_LS}
 	if [ "true" == "${DUMP_AM335X_UBOOT_FROM_MBR}" ]; then
 		local DIR="${ARCHIVE_OPT_DIR}/DUMP_AM335X_UBOOT_FROM_MBR"
 		mkdir -p ${DIR}
 		RUN_CMD dd if=${LOOPBACK_DEVICE} of=${DIR}/MLO count=1 seek=1 conv=notrunc bs=128k
 		RUN_CMD dd if=${LOOPBACK_DEVICE} of=${DIR}/uboot count=2 seek=1 conv=notrunc bs=384k
+		echo -e "\tDUMP_AM335X_UBOOT_FROM_MBR: true" >> ${ARCHIVE_CONFIG_LS}
+	else
+		echo -e "\tDUMP_AM335X_UBOOT_FROM_MBR: true" >> ${ARCHIVE_CONFIG_LS}
 	fi
 
+	fdisk -l ${LOOPBACK_DEVICE} > ${PARITION_TABLE_INFO}
+	cat ${PARITION_TABLE_INFO}
 	echo "partitions:" >> ${ARCHIVE_CONFIG_LS}
 	for p in "${PARTITIONS[@]}"; do
 		local PARTITION=$(basename $p)
@@ -137,9 +142,10 @@ function mycli_command_entry {
 		local LABEL=$(cat ${TMP} | grep "^LABEL" | awk -F'=' '{print $2}' | sed 's/"//g')
 		rm -f ${TMP}
 
-		local START=$(cat ${PARITION_TABLE_INFO} | grep ${PARTITION} | awk '{print $2}')
-		local END=$(cat ${PARITION_TABLE_INFO} | grep ${PARTITION} | awk '{print $3}')
+		local P_START=$(cat ${PARITION_TABLE_INFO} | grep ${PARTITION} | awk '{print $2}')
+		local P_END=$(cat ${PARITION_TABLE_INFO} | grep ${PARTITION} | awk '{print $3}')
 		local BLOCKS=$(cat ${PARITION_TABLE_INFO} | grep ${PARTITION} | awk '{print $4}')
+		[ "*" == "${P_START}" ] && P_START=${P_END} && P_END=${BLOCKS} && BLOCKS=$(cat ${PARITION_TABLE_INFO} | grep ${PARTITION} | awk '{print $5}')
 
 		local PARTITION_SRC_DIR="${MOUNT_TOP_DIR}/${PARTITION_NUMBER}"
 		local PARTITION_DST_DIR="${ARCHIVE_PARTITION_DIR}/${PARTITION_NUMBER}"
@@ -153,9 +159,10 @@ function mycli_command_entry {
 		local SIZE=$(du -sb . | awk '{print $1}')
 		INFO "${p} => $(printf "%'d" ${SIZE}) bytes"
 		tar cf - . | pv -s ${SIZE} | tar xf - -C ${PARTITION_DST_DIR}
+		du -s -m ./* > ${ARCHIVE_VERBOSE_DIR}/${PARTITION_NUMBER}.sizes
 		cd ${CURRENT}
 		RUN_CMD sync
-		RUN_CMD sleep 2
+		RUN_CMD sleep 1
 		RUN_CMD sync
 		RUN_CMD umount ${p}
 		RUN_CMD rm -rf ${PARTITION_SRC_DIR}
@@ -164,8 +171,8 @@ function mycli_command_entry {
 			P_UUID=${UUID} \
 			P_TYPE=${TYPE} \
 			P_LABEL=${LABEL} \
-			P_START=${START} \
-			P_END=${END} \
+			P_START=${P_START} \
+			P_END=${P_END} \
 			P_BLOCKS=${BLOCKS} \
 			output_partition_info ${ARCHIVE_CONFIG_LS}
 	done
