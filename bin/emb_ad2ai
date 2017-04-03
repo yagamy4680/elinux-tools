@@ -1,0 +1,49 @@
+#!/bin/bash
+#
+##DOC:	produce archive image (*.sxz) from archive directory with mksquashfs
+
+function mycli_command_prerequisites {
+cat <<__EOF__
+mksquashfs
+__EOF__
+}
+
+
+function mycli_command_help {
+cat <<__EOF__
+${CLI_NAME} ${CLI_ACTION} [ARCHIVE DIRECTORY] [ARCHIVE IMAGE]
+
+For example:
+	${CLI_NAME} ${CLI_ACTION} $(GREEN "/tmp/bb-14.04.3" "/tmp/bb-14.04.3.sxz")
+	${CLI_NAME} ${CLI_ACTION} $(GREEN "/tmp/bb-14.04.3" "/tmp/bb-14.04.3.sgz")
+
+1st example to produce squashfs image with xz compression algorithm
+2nd example to produce squashfs image with gzip compression algorithm
+__EOF__
+}
+
+
+function mycli_command_entry {
+	local ARCHIVE_DIR=$1
+	local ARCHIVE_IMAGE=$2
+	[ ! -d "${ARCHIVE_DIR}" ] && ERR "missing archive directory: ${ARCHIVE_DIR}" && exit 1
+	[ -f "${ARCHIVE_IMAGE}" ] && rm -f ${ARCHIVE_IMAGE}
+
+	local ARCHIVE_EXT="${ARCHIVE_IMAGE##*.}"
+	local ALGORITHM="gzip"
+
+	case "${ARCHIVE_EXT}" in
+		sgz)
+			ALGORITHM="gzip"
+			;;
+		sxz)
+			ALGORITHM="xz"
+			;;
+		*)
+			ALGORITHM="xz"
+			;;
+	esac
+
+	CMD="mksquashfs ${ARCHIVE_DIR} ${ARCHIVE_IMAGE} -comp ${ALGORITHM} -noI -no-duplicates -progress"
+	INFO "$(PURPLE ${CMD})" && ${CMD}
+}

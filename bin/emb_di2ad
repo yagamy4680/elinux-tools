@@ -115,13 +115,14 @@ function mycli_command_entry {
 	local LOOPBACK_DEVICE_NAME=$(basename ${LOOPBACK_DEVICE})
 	local PARTITIONS=($(find /dev/mapper -name "${LOOPBACK_DEVICE_NAME}p*" | sort))
 	local PARITION_TABLE_INFO=$(mktemp /tmp/XXXXXX)
+	INFO "PARITION_TABLE_INFO = ${PARITION_TABLE_INFO}"
 
 	echo "opts: " >> ${ARCHIVE_CONFIG_LS}
 	if [ "true" == "${DUMP_AM335X_UBOOT_FROM_MBR}" ]; then
 		local DIR="${ARCHIVE_OPT_DIR}/DUMP_AM335X_UBOOT_FROM_MBR"
 		mkdir -p ${DIR}
 		RUN_CMD dd if=${LOOPBACK_DEVICE} of=${DIR}/MLO count=1 seek=1 conv=notrunc bs=128k
-		RUN_CMD dd if=${LOOPBACK_DEVICE} of=${DIR}/uboot count=2 seek=1 conv=notrunc bs=384k
+		RUN_CMD dd if=${LOOPBACK_DEVICE} of=${DIR}/u-boot.img count=2 seek=1 conv=notrunc bs=384k
 		echo -e "\tDUMP_AM335X_UBOOT_FROM_MBR: true" >> ${ARCHIVE_CONFIG_LS}
 	else
 		echo -e "\tDUMP_AM335X_UBOOT_FROM_MBR: true" >> ${ARCHIVE_CONFIG_LS}
@@ -140,6 +141,7 @@ function mycli_command_entry {
 		local UUID=$(cat ${TMP} | grep "^UUID" | awk -F'=' '{print $2}' | sed 's/"//g')
 		local TYPE=$(cat ${TMP} | grep "^TYPE" | awk -F'=' '{print $2}' | sed 's/"//g')
 		local LABEL=$(cat ${TMP} | grep "^LABEL" | awk -F'=' '{print $2}' | sed 's/"//g')
+		INFO "$p::TMP => ${TMP}"
 		rm -f ${TMP}
 
 		local P_START=$(cat ${PARITION_TABLE_INFO} | grep ${PARTITION} | awk '{print $2}')

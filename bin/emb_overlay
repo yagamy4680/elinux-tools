@@ -1,0 +1,78 @@
+#!/bin/bash
+#
+##DOC:	mount/umount overlayfs with given archive directory or archive image.
+
+function mycli_command_prerequisites {
+cat <<__EOF__
+mount
+__EOF__
+}
+
+
+function mycli_command_help {
+cat <<__EOF__
+${CLI_NAME} ${CLI_ACTION} [mount|umount] TARGET_DIR ARCHIVE_IMAGE_OR_DIR
+
+For example:
+	${CLI_NAME} ${CLI_ACTION} $(GREEN "mount"  "/tmp/abc" "/tmp/bb-14.04.3")
+	${CLI_NAME} ${CLI_ACTION} $(GREEN "mount"  "/tmp/abc" "/tmp/bb-14.04.3.sxz")
+	${CLI_NAME} ${CLI_ACTION} $(GREEN "umount" "/tmp/abc")
+__EOF__
+}
+
+
+function overlayfs_mount {
+	local TARGET_DIR=$1
+	local ARCHIVE=$2
+	local DATETIME=$(date '+%Y%m%d%H%M%S')
+	local MOUNT_TOP_DIR="/mnt/${CLI_PROJECT_NAME}/${DATETIME}"
+
+	if [ -d "${TARGET_DIR}" ]; then
+		mount | grep "${TARGET_DIR}" | grep "(rw,bind)$" | awk '{print $1}' | xargs -I{} sh -c "umount -v {}"
+		mount | grep "${TARGET_DIR}" | awk '{print $1}' | xargs -I{} sh -c "umount -v {}"
+		rm -rf ${TARGET_DIR}
+	fi
+	mkdir -p ${TARGET_DIR}
+
+	local LOWER_DIR="${MOUNT_TOP_DIR}/lower"
+	local UPPER_DIR="${MOUNT_TOP_DIR}/upper"
+	local WORK_DIR="${MOUNT_TOP_DIR}/work"
+	
+	RUN_CMD mkdir -p ${LOWER_DIR}
+	RUN_CMD mkdir -p ${UPPER_DIR}
+	RUN_CMD mkdir -p ${WORK_DIR}
+
+	if [ -d "${ARCHIVE}" ]; then
+		RUN_CMD mount -o bind ${ARCHIVE} ${LOWER_DIR}
+	elif [ -f "${ARCHIVE}" ]; then
+		RUN_CMD mount -t squashfs -o ro ${ARCHIVE} ${LOWER_DIR}
+	else
+		ERR "unexpected archive type => ${ARCHIVE}"
+		exit 10
+	fi
+
+	RUN_CMD mount -t overlay overlay -o lowerdir=${LOWER_DIR},upperdir=${UPPER_DIR},workdir=${WORK_DIR} ${TARGET_DIR}
+}
+
+
+function overlayfs_umount {
+	local TARGET_DIR=$1
+	local CURRENT=$(pwd)
+	[ ! -d "${TARGET_DIR}" ] && ERR "target directory does not exist: ${TARGET_DIR}" && exit 10
+	cd ${TARGET_DIR}
+	TARGET_DIR=$(pwd)
+	cd ${CURRENT}
+
+	local DATETIME=$(mount | grep ${TARGET_DIR} | awk '{print $6}' | sed 's/[(|)]//g' | tr ',' '\n' | grep '^lowerdir' | awk -F'=' '{print $2}' | xargs dirname | xargs basename)
+	[ "" == "${DATETIME}" ] && ERR "target directory ${TARGET_DIR} is not mounted" && exit 11
+
+	mount | grep ${DATETIME} | grep overlay | awk '{print $3}' | xargs -I{} sh -c "umount -v {}"
+	mount | grep ${DATETIME} | awk '{print $3}' | xargs -I{} sh -c "umount -v {}"
+}
+
+
+function mycli_command_entry {
+	local ACTION=$1
+	shift
+	overlayfs_${ACTION}	$@
+}

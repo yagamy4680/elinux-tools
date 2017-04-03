@@ -1,0 +1,87 @@
+#!/bin/bash
+#
+##DOC:	manipulate the archive directory with different built-in procedures
+
+function mycli_command_prerequisites {
+cat <<__EOF__
+jq
+uuidgen
+__EOF__
+}
+
+
+function mycli_command_help {
+cat <<__EOF__
+${CLI_NAME} ${CLI_ACTION} [ARCHIVE DIRECTORY] [ACTION]
+
+For example:
+	${CLI_NAME} ${CLI_ACTION} $(GREEN "/tmp/bb-14.04.3" "bb1to2")
+
+	$(YELLOW bb1to2):
+		Convert 1 partition (bootloader in MBR) to 2 partition format 
+		that is one partition for boot and another partition for rootfs.
+__EOF__
+}
+
+
+function cad_bb1to2 {
+	local ARCHIVE_PARTITION_DIR="${ARCHIVE_DIR}/partitions"
+	local ARCHIVE_VERBOSE_DIR="${ARCHIVE_DIR}/.verbose"
+	local ARCHIVE_OPT_DIR="${ARCHIVE_DIR}/opts"
+	local ARCHIVE_CONFIG_JSON="${ARCHIVE_DIR}/config.json"
+	local ARCHIVE_CONFIG_JSON_BAK="${ARCHIVE_VERBOSE_DIR}/config.$(date '+%Y%m%d%H%M').json"
+	local PARTITION_COUNT=$(find ${ARCHIVE_PARTITION_DIR} -maxdepth 1 -mindepth 1 -type d -name 'p?' | wc -l)
+	[ "1" != "${PARTITION_COUNT}" ] && ERR "more than 1 partition: ${PARTITION_COUNT} directories in ${ARCHIVE_PARTITION_DIR}" && exit 10
+
+	local UUID=$(uuidgen)
+	local RESOURCE_DIR="${CLI_RESOURCE_DIR}/${CLI_ACTION}"
+
+	RUN_CMD cp ${ARCHIVE_CONFIG_JSON} ${ARCHIVE_CONFIG_JSON_BAK}
+	cat ${ARCHIVE_CONFIG_JSON_BAK} | \
+		jq ".partitions.p1 = {}" | \
+		jq ".partitions.p1.type = \"fat32\"" | \
+		jq ".partitions.p1.label = \"boot\"" | \
+		jq ".partitions.p1.uuid = \"\"" | \
+		jq ".partitions.p1.p_start = \"0%\"" | \
+		jq ".partitions.p1.p_end = \"2%\"" | \
+		jq ".partitions.p2 = {}" | \
+		jq ".partitions.p2.type = \"$(cat ${ARCHIVE_CONFIG_JSON_BAK} | jq .partitions.p1.type | sed 's/"//g')\"" | \
+		jq ".partitions.p2.label = \"$(cat ${ARCHIVE_CONFIG_JSON_BAK} | jq .partitions.p1.label | sed 's/"//g')\"" | \
+		jq ".partitions.p2.uuid = \"${UUID}\"" | \
+		jq ".partitions.p2.p_start = \"3%\"" | \
+		jq ".partitions.p2.p_end = \"100%\"" \
+		> ${ARCHIVE_CONFIG_JSON}
+
+	cat ${ARCHIVE_CONFIG_JSON} | jq .
+
+	RUN_CMD rm -f ${ARCHIVE_PARTITION_DIR}/p1/uEnv.txt
+	RUN_CMD rm -f ${ARCHIVE_PARTITION_DIR}/p1/nfs-uEnv.txt
+	RUN_CMD mv ${ARCHIVE_PARTITION_DIR}/p1 ${ARCHIVE_PARTITION_DIR}/p2
+	RUN_CMD mkdir -p ${ARCHIVE_PARTITION_DIR}/p1
+	RUN_CMD cp ${RESOURCE_DIR}/uEnv.txt ${ARCHIVE_PARTITION_DIR}/p1/
+	sed -i "s/__UUID__/${UUID}/g" ${ARCHIVE_PARTITION_DIR}/p1/uEnv.txt
+	RUN_CMD cp -v ${ARCHIVE_DIR}/opts/DUMP_AM335X_UBOOT_FROM_MBR/* ${ARCHIVE_PARTITION_DIR}/p1/
+}
+
+
+function mycli_command_entry {
+	local ARCHIVE_DIR=$1
+	local CONVERSION_PROCEDURE=$2
+	[ ! -d "${ARCHIVE_DIR}" ] && ERR "missing archive directory: ${ARCHIVE_DIR}" && exit 1
+
+	case "${CONVERSION_PROCEDURE}" in
+		"bb1to2")
+			shift
+			shift
+			ARCHIVE_DIR=${ARCHIVE_DIR} cad_${CONVERSION_PROCEDURE} $@
+			;;
+		"")
+			ERR "missing conversion procedure..."
+			exit 1
+			;;
+		*)
+			ERR "unsupported conversion procedure: ${CONVERSION_PROCEDURE}"
+			exit 1
+			;;
+	esac
+}
