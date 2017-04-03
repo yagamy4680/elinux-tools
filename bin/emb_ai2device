@@ -1,0 +1,103 @@
+#!/bin/bash
+#
+##DOC:	flash an archive image (*.sxz) to a block device (e.g. /dev/sdb)
+
+function mycli_command_prerequisites {
+cat <<__EOF__
+mount
+mkdosfs
+tune2fs
+mkfs.ext4
+mkfs.ext3
+mkfs.ext2
+parted
+sfdisk
+__EOF__
+}
+
+
+function mycli_command_help {
+cat <<__EOF__
+${CLI_NAME} ${CLI_ACTION} ARCHIVE_IMAGE DEVICE
+
+For example:
+	${CLI_NAME} ${CLI_ACTION} $(GREEN "/tmp/bb-14.04.3.sxz" "/dev/sdb")
+__EOF__
+}
+
+
+function mycli_command_entry {
+	local ARCHIVE_IMAGE=$1
+	local DEVICE=$2
+	local CURRENT=$(pwd)
+	[ ! -f "${ARCHIVE_IMAGE}" ] && ERR "no such file ${ARCHIVE_IMAGE}" && exit 1
+	[ ! -e "${DEVICE}" ] && ERR "no such device ${DEVICE}" && exit 2
+	[ ! -b "${DEVICE}" ] && ERR "no such block device ${DEVICE}" && exit 3
+
+	local DATETIME=$(date '+%Y%m%d%H%M%S')
+	local MOUNT_TOP_DIR="/mnt/${CLI_PROJECT_NAME}/${DATETIME}"
+	local ARCHIVE_DIR="${MOUNT_TOP_DIR}/archive"
+	local ARCHIVE_CONFIG_JSON="${ARCHIVE_DIR}/config.json"
+
+	RUN_CMD mkdir -p ${ARCHIVE_DIR}
+	RUN_CMD mount -t squashfs -o ro ${ARCHIVE_IMAGE} ${ARCHIVE_DIR}
+
+	INFO "cleanup previous mount points"
+	mount | grep "${DEVICE}." | awk '{print $1}' | xargs -I{} sh -c "umount -v {}"
+	mount | grep "${DEVICE}" | awk '{print $1}' | xargs -I{} sh -c "umount -v {}"
+
+	RUN_CMD parted -s ${DEVICE} mklabel msdos
+	for i in {1..10}; do	
+		local PARTITION="p${i}"
+		local DEVICE_PARTITION="${DEVICE}${i}"
+		local TYPE="$(cat ${ARCHIVE_CONFIG_JSON} | jq .partitions.${PARTITION}.type | sed 's/"//g')"
+		[ "null" == "${TYPE}" ] && INFO "there is no ${PARTITION}, let's skip it" && break
+
+		local P_START="$(cat ${ARCHIVE_CONFIG_JSON} | jq .partitions.${PARTITION}.p_start | sed 's/"//g')"
+		local P_END="$(cat ${ARCHIVE_CONFIG_JSON} | jq .partitions.${PARTITION}.p_end | sed 's/"//g')"
+		local UUID="$(cat ${ARCHIVE_CONFIG_JSON} | jq .partitions.${PARTITION}.uuid | sed 's/"//g')"
+		local LABEL="$(cat ${ARCHIVE_CONFIG_JSON} | jq .partitions.${PARTITION}.label | sed 's/"//g')"
+		
+		RUN_CMD parted -s ${DEVICE} mkpart primary ${TYPE} ${P_START} ${P_END}
+		[ "1" == "${i}" ] && RUN_CMD parted -s ${DEVICE} set 1 boot on
+
+		RUN_CMD sleep 1
+		RUN_CMD sync
+		RUN_CMD sfdisk -R ${DEVICE}
+		case "${TYPE}" in
+			"fat32")
+				RUN_CMD mkdosfs -F 32 ${DEVICE_PARTITION}
+				;;
+			"fat16")
+				RUN_CMD mkdosfs -F 16 ${DEVICE_PARTITION}
+				;;
+			"fat12")
+				RUN_CMD mkdosfs -F 12 ${DEVICE_PARTITION}
+				;;
+			*)
+				RUN_CMD mkfs.${TYPE} ${DEVICE_PARTITION}
+				[ "" != "${UUID}" ] && RUN_CMD tune2fs -U ${UUID} ${DEVICE_PARTITION}
+				;;
+		esac
+		[ "" != "${LABEL}" ] && RUN_CMD tune2fs -L ${LABEL} ${DEVICE_PARTITION}
+
+		local PARTITION_SRC_DIR="${ARCHIVE_DIR}/partitions/${PARTITION}"
+		local PARTITION_DST_DIR="${MOUNT_TOP_DIR}/$(basename ${DEVICE_PARTITION})"
+		RUN_CMD mkdir -p ${PARTITION_DST_DIR}
+		RUN_CMD mount ${DEVICE_PARTITION} ${PARTITION_DST_DIR}
+		[ "0" != "$?" ] && ERR "failed to mount ${DEVICE_PARTITION}" && break
+
+		RUN_CMD cd ${PARTITION_SRC_DIR}
+		local SIZE=$(du -sb . | awk '{print $1}')
+		tar cf - . | pv -s ${SIZE} | tar xf - -C ${PARTITION_DST_DIR}
+		RUN_CMD cd ${CURRENT}
+
+		RUN_CMD sync
+		RUN_CMD sleep 1
+		RUN_CMD sync
+		RUN_CMD umount ${DEVICE_PARTITION}
+	done
+
+	RUN_CMD umount ${ARCHIVE_IMAGE}
+	RUN_CMD rm -rf ${MOUNT_TOP_DIR}
+}

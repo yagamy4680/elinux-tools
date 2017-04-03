@@ -38,9 +38,10 @@ function cad_bb1to2 {
 
 	RUN_CMD cp ${ARCHIVE_CONFIG_JSON} ${ARCHIVE_CONFIG_JSON_BAK}
 	cat ${ARCHIVE_CONFIG_JSON_BAK} | \
+		jq ".opts.DUMP_AM335X_UBOOT_FROM_MBR = false" | \
 		jq ".partitions.p1 = {}" | \
 		jq ".partitions.p1.type = \"fat32\"" | \
-		jq ".partitions.p1.label = \"boot\"" | \
+		jq ".partitions.p1.label = \"\"" | \
 		jq ".partitions.p1.uuid = \"\"" | \
 		jq ".partitions.p1.p_start = \"0%\"" | \
 		jq ".partitions.p1.p_end = \"2%\"" | \
@@ -61,6 +62,7 @@ function cad_bb1to2 {
 	RUN_CMD cp ${RESOURCE_DIR}/uEnv.txt ${ARCHIVE_PARTITION_DIR}/p1/
 	sed -i "s/__UUID__/${UUID}/g" ${ARCHIVE_PARTITION_DIR}/p1/uEnv.txt
 	RUN_CMD cp -v ${ARCHIVE_DIR}/opts/DUMP_AM335X_UBOOT_FROM_MBR/* ${ARCHIVE_PARTITION_DIR}/p1/
+	RUN_CMD rm -rf ${ARCHIVE_DIR}/opts/DUMP_AM335X_UBOOT_FROM_MBR
 }
 
 
