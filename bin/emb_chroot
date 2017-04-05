@@ -103,6 +103,29 @@ function chroot_with_shell {
 }
 
 
+function chroot_with_script {
+	local OPTS=$1
+	shift
+	if [ "-c" == "${OPTS}" ]; then
+		local COMMAND=$@
+		pre_rootfs ${ROOTFS_DIR}
+		INFO "running $(YELLOW ${COMMAND})"
+		chroot ${ROOTFS_DIR} /bin/bash -c "${COMMAND}"
+		post_rootfs ${ROOTFS_DIR}
+	else
+		local SCRIPT=${OPTS}
+		[ ! -f ${SCRIPT} ] && ERR "missing script file ${SCRIPT}" && exit 10
+		if [[ "${SCRIPT}" =~ ^/tmp/ ]]; then
+			pre_rootfs ${ROOTFS_DIR}
+			chroot ${ROOTFS_DIR} /bin/bash ${SCRIPT} $@
+			post_rootfs ${ROOTFS_DIR}
+		else
+			ERR "the script ${SCRIPT} does not exist" && exit 11
+		fi
+	fi
+}
+
+
 function mycli_command_help {
 cat <<__EOF__
 Enter interactive mode of BASH
