@@ -140,9 +140,11 @@ Execute one command, or a BASH script file
 	${CLI_NAME} ${CLI_ACTION} $(YELLOW script) /tmp/14.04.3 /tmp/my_bash_script
 
 And, following environment variables are supported because of distribution differences:
-	CHROOT_SPECIFIC=$(YELLOW raspbian)
+	$(BLUE CHROOT_SPECIFIC)=$(PURPLE raspbian)
 		- comment out /etc/ld.so.preload before chroot
 
+	$(BLUE CHROOT_SPECIFIC)=$(PURPLE bone)
+		- temporarily set DNS server as 8.8.8.8 by modifying /etc/resolv.conf
 __EOF__
 }
 

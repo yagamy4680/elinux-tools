@@ -55,6 +55,7 @@ function cad_rpb2a {
 		jq ".partitions.p2.p_start = \"3%\"" | \
 		jq ".partitions.p2.p_end = \"100%\"" | \
 		jq ".partitions.p2.rootfs = true" \
+		jq ".partitions.p2.rootfs_type = \"raspbian\"" | \
 		> ${ARCHIVE_CONFIG_JSON}
 
 	cat ${ARCHIVE_CONFIG_JSON} | jq .
@@ -92,6 +93,7 @@ function cad_bb1to2 {
 		jq ".partitions.p2.uuid = \"${UUID}\"" | \
 		jq ".partitions.p2.p_start = \"3%\"" | \
 		jq ".partitions.p2.p_end = \"100%\"" | \
+		jq ".partitions.p2.rootfs_type = \"bone\"" | \
 		jq ".partitions.p2.rootfs = true" \
 		> ${ARCHIVE_CONFIG_JSON}
 
