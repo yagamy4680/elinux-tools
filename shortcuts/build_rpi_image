@@ -1,0 +1,40 @@
+#!/bin/bash
+
+function build_image {
+	local CURRENT=$(pwd)
+	cd $(dirname $0)
+	cd ..
+	local REPO_NAME=$(basename $(pwd))
+	local CACHE_DIR="/var/lib/${REPO_NAME}"
+	local URL=$1
+	[ "" == "${URL}" ] && URL="https://archives.t2t.io/embedded-linux/os/raspberry/mirrors/raspberry.org/2017-03-02-raspbian-jessie-lite.img.xz"
+	cd ${CURRENT}
+
+	mkdir -p ${CACHE_DIR}
+
+	local FILE=$(basename ${URL})
+	local DOWNLOAD_FILE="${CACHE_DIR}/${FILE}"
+	local NAME=${FILE}
+	NAME=${NAME%.*}
+	local DEVICE_IMAGE_FILE="${CACHE_DIR}/${NAME}"
+	NAME=${NAME%.*}
+	local ARCHIVE_DIR="/tmp/${NAME}-$(date '+%Y%m%d%H%M%S')"
+	local ARCHIVE_IMAGE="/tmp/${NAME}.sxz"
+
+	rm -rf ${ARCHIVE_DIR}
+
+	[ ! -f "${ARCHIVE_FILE}" ] && wget -O ${DOWNLOAD_FILE} ${URL}
+	# [ "0" != "$?" ] && echo "failed to download ${URL}" && exit 1
+
+	[ ! -f "${DEVICE_IMAGE_FILE}" ] && unxz -k ${DOWNLOAD_FILE}
+	# [ "0" != "$?" ] && echo "failed to uncompress ${ARCHIVE_FILE}" && exit 2
+
+	[ ! -f "${DEVICE_IMAGE_FILE}" ] && echo "still missing ${DEVICE_IMAGE_FILE}" && exit 3
+
+	echo "start composing ..." && \
+		emb di2ad ${DEVICE_IMAGE_FILE} ${ARCHIVE_DIR} && \
+		emb convert_ad ${ARCHIVE_DIR} rpb2a && \
+		emb ad2ai ${ARCHIVE_DIR} ${ARCHIVE_IMAGE}
+}
+
+build_image $@
