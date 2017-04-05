@@ -5,6 +5,7 @@
 function mycli_command_prerequisites {
 cat <<__EOF__
 mksquashfs
+pv
 __EOF__
 }
 
@@ -16,9 +17,11 @@ ${CLI_NAME} ${CLI_ACTION} [ARCHIVE DIRECTORY] [ARCHIVE IMAGE]
 For example:
 	${CLI_NAME} ${CLI_ACTION} $(GREEN "/tmp/bb-14.04.3" "/tmp/bb-14.04.3.sxz")
 	${CLI_NAME} ${CLI_ACTION} $(GREEN "/tmp/bb-14.04.3" "/tmp/bb-14.04.3.sgz")
+	${CLI_NAME} ${CLI_ACTION} $(GREEN "/tmp/bb-14.04.3" "/tmp/bb-14.04.3.sqfs.xz")
 
 1st example to produce squashfs image with xz compression algorithm
 2nd example to produce squashfs image with gzip compression algorithm
+3rd example to produce squashfs image without compression, and then use xz to compress entire squashfs image file
 __EOF__
 }
 
@@ -29,7 +32,7 @@ function mycli_command_entry {
 	[ ! -d "${ARCHIVE_DIR}" ] && ERR "missing archive directory: ${ARCHIVE_DIR}" && exit 1
 	[ -f "${ARCHIVE_IMAGE}" ] && rm -f ${ARCHIVE_IMAGE}
 
-	local ARCHIVE_EXT="${ARCHIVE_IMAGE##*.}"
+	local ARCHIVE_EXT="${ARCHIVE_IMAGE#*.}"
 	local ALGORITHM="gzip"
 
 	case "${ARCHIVE_EXT}" in
@@ -39,11 +42,23 @@ function mycli_command_entry {
 		sxz)
 			ALGORITHM="xz"
 			;;
+		sqfs.xz)
+			ALGORITHM="xz"
+			;;
 		*)
 			ALGORITHM="xz"
 			;;
 	esac
 
-	CMD="mksquashfs ${ARCHIVE_DIR} ${ARCHIVE_IMAGE} -comp ${ALGORITHM} -noI -no-duplicates -progress"
-	INFO "$(PURPLE ${CMD})" && ${CMD}
+	if [ "sqfs.xz" == "${ARCHIVE_EXT}" ]; then
+		local SQFS_FILE=${ARCHIVE_IMAGE%.*}
+		local CMD="mksquashfs ${ARCHIVE_DIR} ${SQFS_FILE} -comp ${ALGORITHM} -noI -noD -noF -noX -no-duplicates -progress"
+		INFO "$(PURPLE ${CMD})" && ${CMD}
+		local SIZE=$(du -sb ${SQFS_FILE} | awk '{print $1}')
+		CMD="cat ${SQFS_FILE} | pv -s ${SIZE} | pxz -c > ${ARCHIVE_IMAGE}"
+		INFO "$(PURPLE ${CMD})" && bash -c "${CMD}"
+	else
+		local CMD="mksquashfs ${ARCHIVE_DIR} ${ARCHIVE_IMAGE} -comp ${ALGORITHM} -noI -no-duplicates -progress"
+		INFO "$(PURPLE ${CMD})" && ${CMD}
+	fi
 }
