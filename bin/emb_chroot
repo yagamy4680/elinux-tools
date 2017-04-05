@@ -1,0 +1,148 @@
+#!/bin/bash
+#
+##DOC:	execute bash script inside the given root directory with qemu
+
+function mycli_command_prerequisites {
+cat <<__EOF__
+qemu-arm-static
+mount
+__EOF__
+}
+
+
+function check_rootfs {
+	local ROOTFS=$1
+	shift
+	for dir in "$@"; do
+		[ ! -d "${ROOTFS}/${dir}" ] && ERR "missing ${ROOTFS}/$(YELLOW ${dir}) as rootfs" && exit 1
+	done
+}
+
+
+function remount_sys_dirs {
+	local ROOTFS=$1
+	shift
+	for dir in "$@"; do
+		[ "" != "$(mount | grep ${ROOTFS}/${dir})" ] && RUN_CMD_STREAMING umount ${ROOTFS}/${dir}
+		[ ! -d "${ROOTFS}/${dir}" ] && RUN_CMD mkdir -p ${ROOTFS}/${dir}
+		RUN_CMD mount -o bind /${dir} ${ROOTFS}/${dir}
+	done
+}
+
+
+function umount_sys_dirs {
+	local ROOTFS=$1
+	shift
+	for dir in "$@"; do
+		RUN_CMD umount ${ROOTFS}/${dir}
+	done
+}
+
+
+function pre_rootfs {
+	local ROOTFS=$1
+	local KERNEL_REGISTER_MARK="/tmp/.arm-binfmt_misc"
+
+	case "${CHROOT_SPECIFIC}" in
+		raspbian)
+			# Inspired by the section "One thing to fix" in https://wiki.debian.org/RaspberryPi/qemu-user-static
+			#	To get everything work (e.g., network) you need to comment out everything in ~/rpi_mnt/etc/ld.so.preload 
+			#   before chrooting in. Take care of that now!`
+			#
+			RUN_CMD mv ${ROOTFS}/etc/ld.so.preload ${ROOTFS}/etc/ld.so.preload.bak
+			RUN_CMD touch ${ROOTFS}/etc/ld.so.preload
+			;;
+		bone)
+			[ -f "${ROOTFS}/etc/resolv.conf" ] && RUN_CMD mv ${ROOTFS}/etc/resolv.conf ${ROOTFS}/etc/resolv.conf.bak
+			[ -L "${ROOTFS}/etc/resolv.conf" ] && RUN_CMD mv ${ROOTFS}/etc/resolv.conf ${ROOTFS}/etc/resolv.conf.bak
+			echo "nameserver 8.8.8.8" > ${ROOTFS}/etc/resolv.conf
+			;;
+		*)
+			;;
+	esac
+
+	check_rootfs ${ROOTFS} root lib etc usr opt var
+	remount_sys_dirs ${ROOTFS} tmp dev sys proc
+
+	# This registers the static QEMU we copied as arm-interpreter to the kernel.
+	#
+	if [ ! -f "${KERNEL_REGISTER_MARK}" ]; then
+		echo ':arm:M::\x7fELF\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x28\x00:\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/usr/bin/qemu-arm-static:' > /proc/sys/fs/binfmt_misc/register 2>/dev/null
+		date > ${KERNEL_REGISTER_MARK}
+	fi
+	if [ ! -f "/tmp/qemu-arm-static" ]; then
+		RUN_CMD cp $(which qemu-arm-static) /tmp
+	fi
+}
+
+
+function post_rootfs {
+	local ROOTFS=$1
+	umount_sys_dirs ${ROOTFS} tmp dev sys proc
+
+	case "${CHROOT_SPECIFIC}" in
+		raspbian)
+			RUN_CMD rm -f ${ROOTFS}/etc/ld.so.preload
+			RUN_CMD mv ${ROOTFS}/etc/ld.so.preload.bak ${ROOTFS}/etc/ld.so.preload
+			;;
+		bone)
+			RUN_CMD rm -f ${ROOTFS}/etc/resolv.conf
+			[ -f "${ROOTFS}/etc/resolv.conf.bak" ] && RUN_CMD mv ${ROOTFS}/etc/resolv.conf.bak ${ROOTFS}/etc/resolv.conf
+			[ -L "${ROOTFS}/etc/resolv.conf.bak" ] && RUN_CMD mv ${ROOTFS}/etc/resolv.conf.bak ${ROOTFS}/etc/resolv.conf
+			;;
+		*)
+			;;
+	esac
+}
+
+
+function chroot_with_shell {
+	pre_rootfs ${ROOTFS_DIR}
+	chroot ${ROOTFS_DIR} /bin/bash
+	post_rootfs ${ROOTFS_DIR}
+}
+
+
+function mycli_command_help {
+cat <<__EOF__
+Enter interactive mode of BASH
+	${CLI_NAME} ${CLI_ACTION} $(YELLOW shell) $(LIGHT_GREEN [ROOTFS_PATH])
+	${CLI_NAME} ${CLI_ACTION} shell .
+	${CLI_NAME} ${CLI_ACTION} shell /tmp/14.04.3
+
+Execute one command, or a BASH script file
+	${CLI_NAME} ${CLI_ACTION} $(YELLOW script) $(LIGHT_GREEN [ROOTFS_PATH]) $(GRAY -c \"[COMMAND]\")
+	${CLI_NAME} ${CLI_ACTION} $(YELLOW script) $(LIGHT_GREEN [ROOTFS_PATH]) $(GRAY [SCRIPT_FILE_ON_HOST_TMPDIR])
+	${CLI_NAME} ${CLI_ACTION} $(YELLOW script) /tmp/14.04.3 -c "ls -al /opt"
+	${CLI_NAME} ${CLI_ACTION} $(YELLOW script) /tmp/14.04.3 /tmp/my_bash_script
+
+And, following environment variables are supported because of distribution differences:
+	CHROOT_SPECIFIC=$(YELLOW raspbian)
+		- comment out /etc/ld.so.preload before chroot
+
+__EOF__
+}
+
+
+function mycli_command_entry {
+	local SUBCOMMAND=$1
+	local ROOTFS_DIR=$2
+	local CURRENT=$(pwd)
+	[ "" == "${SUBCOMMAND}" ] && INFO "please use help command to show more messages" && exit 1
+	[ "" == "${ROOTFS_DIR}" ] && ERR "please specify root directory" && exit 2
+	[ ! -d "${ROOTFS_DIR}" ] && ERR "missing directory ${ROOTFS_DIR}" && exit 3
+	shift
+	shift
+	cd ${ROOTFS_DIR}
+	ROOTFS_DIR=$(pwd)
+	cd ${CURRENT}
+
+	case "${SUBCOMMAND}" in
+		shell|script)
+			ROOTFS_DIR=${ROOTFS_DIR} chroot_with_${SUBCOMMAND} $@
+			;;
+		*)
+			ERR "unsupported subcommand: ${SUBCOMMAND}"
+			;;
+	esac
+}
