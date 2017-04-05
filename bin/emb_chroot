@@ -120,7 +120,7 @@ function chroot_with_script {
 			chroot ${ROOTFS_DIR} /bin/bash ${SCRIPT} $@
 			post_rootfs ${ROOTFS_DIR}
 		else
-			ERR "the script ${SCRIPT} does not exist" && exit 11
+			ERR "the script $(RED ${SCRIPT}) shall be placed at $(GREEN /tmp) to execute" && exit 11
 		fi
 	fi
 }
