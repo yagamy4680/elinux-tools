@@ -16,11 +16,51 @@ ${CLI_NAME} ${CLI_ACTION} [ARCHIVE DIRECTORY] [ACTION]
 
 For example:
 	${CLI_NAME} ${CLI_ACTION} $(GREEN "/tmp/bb-14.04.3" "bb1to2")
+	${CLI_NAME} ${CLI_ACTION} $(GREEN "/tmp/bb-14.04.3" "rpb2a")
 
 	$(YELLOW bb1to2):
-		Convert 1 partition (bootloader in MBR) to 2 partition format 
-		that is one partition for boot and another partition for rootfs.
+		Convert Beaglebone 1 partition (bootloader in MBR) to 2 partition 
+		format that is one partition for boot and another partition for 
+		rootfs.
+	$(YELLOW rpb2a):
+		Process Raspbian Lite image for further process.
 __EOF__
+}
+
+
+function cad_rpb2a {
+	local ARCHIVE_PARTITION_DIR="${ARCHIVE_DIR}/partitions"
+	local ARCHIVE_VERBOSE_DIR="${ARCHIVE_DIR}/.verbose"
+	local ARCHIVE_OPT_DIR="${ARCHIVE_DIR}/opts"
+	local ARCHIVE_CONFIG_JSON="${ARCHIVE_DIR}/config.json"
+	local ARCHIVE_CONFIG_JSON_BAK="${ARCHIVE_VERBOSE_DIR}/config.$(date '+%Y%m%d%H%M').json"
+	local PARTITION_COUNT=$(find ${ARCHIVE_PARTITION_DIR} -maxdepth 1 -mindepth 1 -type d -name 'p?' | wc -l)
+	[ "2" != "${PARTITION_COUNT}" ] && ERR "expect 2 partitions but ${PARTITION_COUNT}" && exit 10
+
+	local CURRENT=$(pwd)
+
+	RUN_CMD cp ${ARCHIVE_CONFIG_JSON} ${ARCHIVE_CONFIG_JSON_BAK}
+	cat ${ARCHIVE_CONFIG_JSON_BAK} | \
+		jq ".opts = {}" | \
+		jq ".partitions.p1 = {}" | \
+		jq ".partitions.p1.type = \"fat32\"" | \
+		jq ".partitions.p1.label = \"\"" | \
+		jq ".partitions.p1.uuid = \"\"" | \
+		jq ".partitions.p1.p_start = \"0%\"" | \
+		jq ".partitions.p1.p_end = \"2%\"" | \
+		jq ".partitions.p2 = {}" | \
+		jq ".partitions.p2.type = \"$(cat ${ARCHIVE_CONFIG_JSON_BAK} | jq .partitions.p2.type | sed 's/"//g')\"" | \
+		jq ".partitions.p2.label = \"$(cat ${ARCHIVE_CONFIG_JSON_BAK} | jq .partitions.p2.label | sed 's/"//g')\"" | \
+		jq ".partitions.p2.uuid = \"${UUID}\"" | \
+		jq ".partitions.p2.p_start = \"3%\"" | \
+		jq ".partitions.p2.p_end = \"100%\"" | \
+		jq ".partitions.p2.rootfs = true" \
+		> ${ARCHIVE_CONFIG_JSON}
+
+	cat ${ARCHIVE_CONFIG_JSON} | jq .
+	RUN_CMD cd ${ARCHIVE_PARTITION_DIR}/p2/usr/bin
+	RUN_CMD ln -s /tmp/qemu-arm-static .
+	RUN_CMD cd ${CURRENT}
 }
 
 
@@ -35,6 +75,7 @@ function cad_bb1to2 {
 
 	local UUID=$(uuidgen)
 	local RESOURCE_DIR="${CLI_RESOURCE_DIR}/${CLI_ACTION}"
+	local CURRENT=$(pwd)
 
 	RUN_CMD cp ${ARCHIVE_CONFIG_JSON} ${ARCHIVE_CONFIG_JSON_BAK}
 	cat ${ARCHIVE_CONFIG_JSON_BAK} | \
@@ -50,7 +91,8 @@ function cad_bb1to2 {
 		jq ".partitions.p2.label = \"$(cat ${ARCHIVE_CONFIG_JSON_BAK} | jq .partitions.p1.label | sed 's/"//g')\"" | \
 		jq ".partitions.p2.uuid = \"${UUID}\"" | \
 		jq ".partitions.p2.p_start = \"3%\"" | \
-		jq ".partitions.p2.p_end = \"100%\"" \
+		jq ".partitions.p2.p_end = \"100%\"" | \
+		jq ".partitions.p2.rootfs = true" \
 		> ${ARCHIVE_CONFIG_JSON}
 
 	cat ${ARCHIVE_CONFIG_JSON} | jq .
@@ -63,19 +105,23 @@ function cad_bb1to2 {
 	sed -i "s/__UUID__/${UUID}/g" ${ARCHIVE_PARTITION_DIR}/p1/uEnv.txt
 	RUN_CMD cp -v ${ARCHIVE_DIR}/opts/DUMP_AM335X_UBOOT_FROM_MBR/* ${ARCHIVE_PARTITION_DIR}/p1/
 	RUN_CMD rm -rf ${ARCHIVE_DIR}/opts/DUMP_AM335X_UBOOT_FROM_MBR
+	RUN_CMD cd ${ARCHIVE_PARTITION_DIR}/p2/usr/bin
+	RUN_CMD ln -s /tmp/qemu-arm-static .
+	RUN_CMD cd ${CURRENT}
 }
 
 
 function mycli_command_entry {
-	local ARCHIVE_DIR=$1
+	export ARCHIVE_DIR=$1
 	local CONVERSION_PROCEDURE=$2
-	[ ! -d "${ARCHIVE_DIR}" ] && ERR "missing archive directory: ${ARCHIVE_DIR}" && exit 1
+	[ "" == "${ARCHIVE_DIR}" ] && ERR "please specify archive directory" && exit 1
+	[ ! -d "${ARCHIVE_DIR}" ] && ERR "missing archive directory: ${ARCHIVE_DIR}" && exit 2
+	shift
+	shift
 
 	case "${CONVERSION_PROCEDURE}" in
-		"bb1to2")
-			shift
-			shift
-			ARCHIVE_DIR=${ARCHIVE_DIR} cad_${CONVERSION_PROCEDURE} $@
+		bb1to2|rpb2a)
+			cad_${CONVERSION_PROCEDURE} $@
 			;;
 		"")
 			ERR "missing conversion procedure..."

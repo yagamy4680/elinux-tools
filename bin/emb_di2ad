@@ -75,6 +75,7 @@ function mycli_command_entry {
 	local ARCHIVE_DIR=$2
 	local CURRENT=$(pwd)
 	[ ! -f "${DEVICE_IMAGE_PATH}" ] && ERR "missing ${DEVICE_IMAGE_PATH}" && exit 1
+	[ "" == "${ARCHIVE_DIR}" ] && ERR "please specify archive directory" && exit 2
 	[ ! -d "${ARCHIVE_DIR}" ] && mkdir -p ${ARCHIVE_DIR}
 
 	local MOUNT_TOP_DIR="/mnt/${CLI_PROJECT_NAME}/$(date '+%Y%m%d%H%M%S')"
