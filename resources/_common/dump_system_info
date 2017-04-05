@@ -1,0 +1,40 @@
+#!/bin/bash
+#
+
+function to_lower {
+	echo $@ | tr '[:upper:]' '[:lower:]'
+}
+
+function show_kernel_name {
+	to_lower $(uname -s)
+}
+
+function show_kernel_release_version {
+	to_lower $(uname -r)
+}
+
+function show_os_distribution_name {
+	to_lower $(lsb_release -a 2>/dev/null | grep "^Distributor" | awk '{print $3}' | sed 's/\ //g')
+}
+
+function show_os_distribution_codename {
+	to_lower $(lsb_release -a 2>/dev/null | grep "^Codename" | awk '{print $2}' | sed 's/\ //g')
+}
+
+function show_os_architecture {
+	to_lower $(uname -m)
+}
+
+function dump_sys_info {
+cat <<__EOF__
+system:
+	os:
+		kernel: "$(show_kernel_name)"
+		kernel_version: "$(show_kernel_release_version)"
+		kernel_architecture: "$(show_os_architecture)"
+		dist_name: "$(show_os_distribution_name)"
+		dist_codename: "$(show_os_distribution_codename)"
+__EOF__
+}
+
+dump_sys_info $@

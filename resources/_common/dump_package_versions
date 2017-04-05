@@ -1,0 +1,31 @@
+#!/bin/bash
+
+function dump_deb_versions {
+	# Debian packages and their versions
+	#
+	dpkg-query -l | grep "^..\ \ " | awk '{printf "debian\t%s\t%s\n", $2, $3}'
+}
+
+function dump_py2_versions {
+	# Python2 packages and their versions
+	#
+	[ "" != "$(which pip)" ] && pip freeze | awk -F'==' '{printf "python2\t%s\t%s\n", $1, $2}'
+}
+
+function dump_py3_versions {
+	# Python3 packages and their versions
+	#
+	[ "" != "$(which pip3)" ] && pip3 freeze | awk -F'==' '{printf "python3\t%s\t%s\n", $1, $2}'
+}
+
+
+function dump_pkg_versions {
+cat <<__EOF__
+type	package	version
+$(dump_deb_versions)
+$(dump_py2_versions)
+$(dump_py3_versions)
+__EOF__
+}
+
+dump_pkg_versions $@
