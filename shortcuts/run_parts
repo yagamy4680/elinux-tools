@@ -1,0 +1,29 @@
+#!/bin/bash
+#
+
+function run_my_parts {
+	local NAME=$1
+	local ARCHIVE_DIR=$2
+	local CURRENT=$(pwd)
+	cd $(dirname $0)
+	local TOP_DIR=$(pwd)
+	cd ${CURRENT}
+	[ "" == "${NAME}" ] && echo "please specify name first" && exit 1
+	[ "" == "${ARCHIVE_DIR}" ] && echo "please specify archive directory" && exit 2
+	local BUILD_PROFILE_TEMPLATE="${TOP_DIR}/build_profile_template.yaml"
+	local BUILD_JSON="/tmp/${NAME}.json"
+	local CMD=""
+
+	CMD="PROFILE_NAME=${NAME} ${TOP_DIR}/../tools/transform/app.ls yaml2json -s ${TOP_DIR}/build_profile_template.yaml -o ${BUILD_JSON}"
+	echo ${CMD}
+	bash -c "${CMD}"
+	[ "0" != "$?" ] && echo "failed tp convert yaml conf file to json" && exit 3
+	cat ${BUILD_JSON} | jq .
+	[ "0" != "$?" ] && echo "invalid json file: ${BUILD_JSON}" && exit 4
+
+	CMD="emb apply_parts ${ARCHIVE_DIR} ${BUILD_JSON}"
+	echo ${CMD}
+	bash -c "${CMD}"
+}
+
+run_my_parts $@

@@ -1,0 +1,25 @@
+## Template for Build profile.
+#
+name: {{PROFILE_NAME}}
+
+parts:
+  - debian-base
+  - ironman
+
+
+envs:
+  # Possible values: `bone`, `raspbian`
+  #
+  BOARD_DIST_CODENAME: bone
+
+  # Possible values: `bbg`, `bbgw`, `piz`, `pizw`, `pi2`, `pi3`
+  #
+  BOARD: bbgw
+
+
+configs:
+  debian-base :
+    TIMEZONE: Asia/Taipei
+  bluez :
+    SOURCE_URL: https://www.kernel.org/pub/linux/bluetooth/bluez-5.36.tar.xz
+    INSTALL_GATTTOOL: true

@@ -1,0 +1,183 @@
+#!/bin/bash
+#
+##DOC:	build archive directory with parts
+
+function mycli_command_prerequisites {
+cat <<__EOF__
+jq
+node
+__EOF__
+}
+
+
+function mycli_command_help {
+cat <<__EOF__
+${CLI_NAME} ${CLI_ACTION} ARCHIVE_DIRECTORY BUILD_CONF
+
+For example:
+	${CLI_NAME} ${CLI_ACTION} $(GREEN "/tmp/bb-14.04.3" "/tmp/build.conf")
+
+Here are supported environment variables:
+	PARTS_DIRS, the extra directories for searching parts, separated by comma ':',
+	            e.g. /tmp/parts:/home/$(whoami)/parts:/var/lib/elinux/parts
+__EOF__
+}
+
+
+function dump_pkg_dependencies {
+	local CONFIG_JSON=$1
+	local PKGER=$2
+	echo "# ${CONFIG_JSON}"
+	if [ "" != "$(cat ${CONFIG_JSON} | jq .dependencies.${PKGER} | jq .[] | grep '\[' | head -n1)" ]; then
+		cat ${CONFIG_JSON} | jq .dependencies.${PKGER} | jq .[] | jq .[] | sed 's/"//g'
+	else
+		cat ${CONFIG_JSON} | jq .dependencies.${PKGER} | jq .[] | sed 's/"//g'
+	fi
+}
+
+
+function verify_ad {
+	export AD_CONF_JSON="${AD_TOPDIR}/config.json"
+	export AD_PARTITION_DIR="${AD_TOPDIR}/partitions"
+
+	[ ! -f "${AD_CONF_JSON}" ] && ERR "invalid archive directory => missing ${AD_CONF_JSON}" && exit 10
+	[ ! -d "${AD_PARTITION_DIR}" ] && ERR "invalid archive directory => missing ${AD_PARTITION_DIR}" && exit 11
+	[ ! -d "${AD_PARTITION_DIR}/p1" ] && ERR "invalid archive directory => missing ${AD_PARTITION_DIR}/p1" && exit 12
+
+	export AD_ROOTFS_PARTITION=""
+	for index in {1..10}; do
+		local ROOTFS=$(cat ${AD_CONF_JSON} | jq ".partitions.p${index}.rootfs")
+		[ "true" == "${ROOTFS}" ] && export AD_ROOTFS_PARTITION="p${index}" && break
+	done
+	
+	[ "" == "${AD_ROOTFS_PARTITION}" ] && ERR "missing rootfs partition definition in ${AD_CONF_JSON}" && exit 13
+	INFO "detect rootfs partition: $(LIGHT_GREEN ${AD_ROOTFS_PARTITION}) ($(GRAY ${AD_PARTITION_DIR}/${AD_ROOTFS_PARTITION}))"
+}
+
+
+function process_part_pre {
+	local PART=$1
+	local PART_DIR=$2
+	local PART_CONFIG_SRC="${PART_DIR}/config.ls"
+	local PART_DEFAULTS_SRC="${PART_DIR}/defaults.yaml"
+
+	local PART_WORK_DIR="${AD_BUILD_WORK_TOPDIR}/parts/${PART}"
+	local PART_WORK_CONFIG_JSON="${PART_WORK_DIR}.json"
+	local PART_WORK_ENV_JSON_SRC1="${PART_WORK_DIR}.env.json.1"
+	local PART_WORK_ENV_JSON_SRC2="${PART_WORK_DIR}.env.json.2"
+	local PART_WORK_ENV_JSON="${PART_WORK_DIR}.env.json"
+	local PART_WORK_ENV_BASH="${PART_WORK_DIR}.env.bash"
+
+	mkdir -p ${PART_WORK_DIR}
+	RUN_CMD ${TRANSFORM} ls2json -s ${PART_CONFIG_SRC} -o ${PART_WORK_CONFIG_JSON} || return $?
+
+	dump_pkg_dependencies ${PART_WORK_CONFIG_JSON} "debian" >> ${AD_BUILD_WORK_DEBIAN_PKG_LIST}
+	dump_pkg_dependencies ${PART_WORK_CONFIG_JSON} "python2" >> ${AD_BUILD_WORK_PYTHON2_PKG_LIST}
+	dump_pkg_dependencies ${PART_WORK_CONFIG_JSON} "python3" >> ${AD_BUILD_WORK_PYTHON3_PKG_LIST}
+
+	echo "{}" > ${PART_WORK_ENV_JSON_SRC1}
+	echo "{}" > ${PART_WORK_ENV_JSON_SRC2}
+
+	local VALUE="$(cat ${AD_BUILD_CONF_JSON} | jq ".[\"configs\"][\"${PART}\"]")"
+	if [ "null" == "${VALUE}" ] || [ "undefined" == "${VALUE}" ]; then
+		cat ${AD_BUILD_CONF_JSON} | jq ".[\"configs\"][\"${PART}\"]" > ${PART_WORK_ENV_JSON_SRC1}
+	fi
+
+	[ -f "${PART_DEFAULTS_SRC}" ] && RUN_CMD ${TRANSFORM} yaml2json -s ${PART_DEFAULTS_SRC} -o ${PART_WORK_ENV_JSON_SRC2}
+
+	RUN_CMD ${TRANSFORM} jsons -o ${PART_WORK_ENV_JSON} ${PART_WORK_ENV_JSON_SRC2} ${PART_WORK_ENV_JSON_SRC1}
+	RUN_CMD ${TRANSFORM} json2env -s ${PART_WORK_ENV_JSON} -o ${PART_WORK_ENV_BASH} -p ${PART}
+
+	cat ${PART_WORK_ENV_BASH} | awk '{printf "\t%s\n", $0}'
+
+	RUN_CMD mount -o bind ${PART_DIR} ${PART_WORK_DIR}
+}
+
+
+function process_part_post {
+	local PART=$1
+	local PART_WORK_DIR="${AD_BUILD_WORK_TOPDIR}/parts/${PART}"
+	RUN_CMD umount ${PART_WORK_DIR}
+}
+
+
+function initialize_parts_dirs {
+	local CLI_PARTS_DIR="${CLI_DIR}/parts"
+	[ "" == "${PARTS_DIRS}" ] && local PARTS_DIRS=${CLI_PARTS_DIR} || PARTS_DIRS="${CLI_DIR}/parts:${PARTS_DIRS}"
+	local DIRS=($(echo ${PARTS_DIRS} | tr ':' '\n'))
+	local TMP1=$(mktemp /tmp/XXXXXX)
+	local TMP2=$(mktemp /tmp/XXXXXX)
+
+	for p in "${PARTS[@]}"; do
+		echo $p >> ${TMP1}
+		echo $p >> ${AD_BUILD_WORK_PARTS_FILE}
+	done
+
+	for d in "${DIRS[@]}"; do
+		for p in "${PARTS[@]}"; do
+			echo -e "${p}:$(find ${d} -maxdepth 1 -mindepth 1 -name ${p})" >> ${TMP1}
+		done
+	done
+	
+	for p in "${PARTS[@]}"; do
+		local LINE=$(cat ${TMP1} | grep "^${p}" | tail -n1)
+		[ "" == "${LINE}" ] && ERR "failed to find part ${p}" && exit 20
+		local PART=$(echo ${LINE} | awk -F':' '{print $1}')
+		local DIR=$(echo ${LINE} | awk -F':' '{print $2}')
+		[ "" == "${DIR}" ] && ERR "failed to find part ${p} directory" && exit 21
+		[ ! -f "${DIR}/config.ls" ] && ERR "failed to find config file for the part ${PART} (${DIR}/config.ls)" && exit 22
+		INFO "find part $(LIGHT_GREEN ${PART}) at the path $(BLUE ${DIR})"
+		echo ${LINE} >> ${TMP2}
+	done
+	rm -f ${TMP1}
+
+	local XS=($(cat ${TMP2}))
+	rm -f ${TMP2}
+
+	for x in "${XS[@]}"; do
+		local PART=$(echo ${x} | awk -F':' '{print $1}')
+		local DIR=$(echo ${x} | awk -F':' '{print $2}')
+		INFO "processing ${PART} with ${DIR} ..."
+		process_part_pre ${PART} ${DIR}
+		[ "0" != "$?" ] && ERR "failed to process part ${PART}" && exit 23
+	done
+}
+
+
+function finalize_parts_dirs {
+	for p in "${PARTS[@]}"; do
+		process_part_post $p
+	done
+}
+
+
+function mycli_command_entry {
+	export AD_TOPDIR=$1
+	export AD_BUILD_CONF_JSON=$2
+	[ "" == "${AD_TOPDIR}" ] && ERR "please specify ARCHIVE_DIRECTORY" && exit 1
+	[ "" == "${AD_BUILD_CONF_JSON}" ] && ERR "please specify BUILD_CONF" && exit 2
+	[ ! -d "${AD_TOPDIR}" ] && ERR "missing directory ${AD_TOPDIR}" && exit 3
+	[ ! -f "${AD_BUILD_CONF_JSON}" ] && ERR "missing build configuration file ${AD_BUILD_CONF_JSON}" && exit 4
+	verify_ad
+
+	jq . ${AD_BUILD_CONF_JSON} > /dev/null 2>&1
+	[ "0" != "$?" ] && ERR "invalid json format => ${AD_BUILD_CONF_JSON}" && exit 5
+
+	export TRANSFORM="${CLI_DIR}/tools/transform/app.ls"
+	export PARTS=($(cat ${AD_BUILD_CONF_JSON} | jq .parts | jq .[] | sed 's/"//g'))
+	export AD_BUILD_WORK_TOPDIR="/tmp/${CLI_PROJECT_NAME}/${CLI_ACTION}_$(date '+%Y%m%d%H%M%S')"
+	export AD_BUILD_WORK_PARTS_FILE="${AD_BUILD_WORK_TOPDIR}/parts.txt"
+	export AD_BUILD_WORK_DEBIAN_PKG_LIST="${AD_BUILD_WORK_TOPDIR}/debian.txt"
+	export AD_BUILD_WORK_PYTHON2_PKG_LIST="${AD_BUILD_WORK_TOPDIR}/python2.txt"
+	export AD_BUILD_WORK_PYTHON3_PKG_LIST="${AD_BUILD_WORK_TOPDIR}/python3.txt"
+	mkdir -p ${AD_BUILD_WORK_TOPDIR}
+
+	initialize_parts_dirs
+
+	find ${AD_BUILD_WORK_TOPDIR} | sort | awk '{printf "\t%s\n", $0}'
+	# INFO "${AD_BUILD_WORK_DEBIAN_PKG_LIST} => \n$(cat ${AD_BUILD_WORK_DEBIAN_PKG_LIST})"
+	# INFO "${AD_BUILD_WORK_PYTHON2_PKG_LIST} => \n$(cat ${AD_BUILD_WORK_PYTHON2_PKG_LIST})"
+	# INFO "${AD_BUILD_WORK_PYTHON3_PKG_LIST} => \n$(cat ${AD_BUILD_WORK_PYTHON3_PKG_LIST})"
+
+	finalize_parts_dirs
+}
