@@ -22,7 +22,9 @@ function run_my_parts {
 	[ "0" != "$?" ] && echo "invalid json file: ${BUILD_JSON}" && exit 4
 
 	CMD="emb apply_parts ${ARCHIVE_DIR} ${BUILD_JSON}"
+	echo ""
 	echo ${CMD}
+	echo ""
 	bash -c "${CMD}"
 }
 

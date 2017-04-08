@@ -24,6 +24,14 @@ __EOF__
 }
 
 
+function read_part_list {
+cat <<__EOF__
+elinux-common
+$(cat $1 | jq .parts | jq .[] | sed 's/"//g')
+__EOF__
+}
+
+
 function dump_pkg_dependencies {
 	local CONFIG_JSON=$1
 	local PKGER=$2
@@ -76,11 +84,12 @@ function process_part_pre {
 	local PART_WORK_ENV_BASH="${PART_WORK_DIR}.env.bash"
 
 	mkdir -p ${PART_WORK_DIR}
-	RUN_CMD ${TRANSFORM} ls2json -s ${PART_CONFIG_SRC} -o ${PART_WORK_CONFIG_JSON} || return $?
-
-	dump_pkg_dependencies ${PART_WORK_CONFIG_JSON} "debian" >> ${AD_BUILD_WORK_DEBIAN_PKG_LIST}
-	dump_pkg_dependencies ${PART_WORK_CONFIG_JSON} "python2" >> ${AD_BUILD_WORK_PYTHON2_PKG_LIST}
-	dump_pkg_dependencies ${PART_WORK_CONFIG_JSON} "python3" >> ${AD_BUILD_WORK_PYTHON3_PKG_LIST}
+	if [ -f "${PART_CONFIG_SRC}" ]; then
+		RUN_CMD ${TRANSFORM} ls2json -s ${PART_CONFIG_SRC} -o ${PART_WORK_CONFIG_JSON} || return $?
+		dump_pkg_dependencies ${PART_WORK_CONFIG_JSON} "debian" >> ${AD_BUILD_WORK_DEBIAN_PKG_LIST}
+		dump_pkg_dependencies ${PART_WORK_CONFIG_JSON} "python2" >> ${AD_BUILD_WORK_PYTHON2_PKG_LIST}
+		dump_pkg_dependencies ${PART_WORK_CONFIG_JSON} "python3" >> ${AD_BUILD_WORK_PYTHON3_PKG_LIST}
+	fi
 
 	echo "{}" > ${PART_WORK_ENV_JSON_SRC1}
 	echo "{}" > ${PART_WORK_ENV_JSON_SRC2}
@@ -132,7 +141,7 @@ function initialize_parts_dirs {
 		local PART=$(echo ${LINE} | awk -F':' '{print $1}')
 		local DIR=$(echo ${LINE} | awk -F':' '{print $2}')
 		[ "" == "${DIR}" ] && ERR "failed to find part ${p} directory" && exit 21
-		[ ! -f "${DIR}/config.ls" ] && ERR "failed to find config file for the part ${PART} (${DIR}/config.ls)" && exit 22
+		# [ ! -f "${DIR}/config.ls" ] && ERR "failed to find config file for the part ${PART} (${DIR}/config.ls)" && exit 22
 		INFO "find part $(LIGHT_GREEN ${PART}) at the path $(BLUE ${DIR})"
 		echo ${LINE} >> ${TMP2}
 	done
@@ -193,7 +202,7 @@ function mycli_command_entry {
 	[ "0" != "$?" ] && ERR "invalid json format => ${AD_BUILD_CONF_JSON}" && exit 5
 
 	export TRANSFORM="${CLI_DIR}/tools/transform/app.ls"
-	export PARTS=($(cat ${AD_BUILD_CONF_JSON} | jq .parts | jq .[] | sed 's/"//g'))
+	export PARTS=($(read_part_list ${AD_BUILD_CONF_JSON}))
 	export AD_BUILD_WORK_TOPDIR="/tmp/${CLI_PROJECT_NAME}/${CLI_ACTION}_$(date '+%Y%m%d%H%M%S')"
 	export AD_BUILD_WORK_PARTS_FILE="${AD_BUILD_WORK_TOPDIR}/parts.txt"
 	export AD_BUILD_WORK_DEBIAN_PKG_LIST="${AD_BUILD_WORK_TOPDIR}/package-debian.txt"
