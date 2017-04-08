@@ -6,6 +6,8 @@ function mycli_command_prerequisites {
 cat <<__EOF__
 mksquashfs
 pv
+pxz
+gzip
 __EOF__
 }
 
@@ -32,8 +34,10 @@ function mycli_command_entry {
 	[ ! -d "${ARCHIVE_DIR}" ] && ERR "missing archive directory: ${ARCHIVE_DIR}" && exit 1
 	[ -f "${ARCHIVE_IMAGE}" ] && rm -f ${ARCHIVE_IMAGE}
 
-	local ARCHIVE_EXT="${ARCHIVE_IMAGE#*.}"
+	local ARCHIVE_EXT="${ARCHIVE_IMAGE##*.}"
 	local ALGORITHM="gzip"
+	local COMPRESSOR="gzip"
+	local SQFS_FILE=""
 
 	case "${ARCHIVE_EXT}" in
 		sgz)
@@ -42,23 +46,24 @@ function mycli_command_entry {
 		sxz)
 			ALGORITHM="xz"
 			;;
-		sqfs.xz)
-			ALGORITHM="xz"
+		xz|gz)
+			[ "${ARCHIVE_IMAGE}" == "$(basename ${ARCHIVE_IMAGE} .sqfs.${ARCHIVE_EXT})" ] && ERR "unsupported format: ${ARCHIVE_IMAGE}" && exit 2
+			SQFS_FILE="$(basename ${ARCHIVE_IMAGE} .sqfs.${ARCHIVE_EXT}).sqfs"
+			[ "xz" == "${ARCHIVE_EXT}" ] && ALGORITHM="xz" && COMPRESSOR="pxz"
 			;;
 		*)
-			ALGORITHM="xz"
+			ERR "unsupported format: ${ARCHIVE_IMAGE}" && exit 2
 			;;
 	esac
 
-	if [ "sqfs.xz" == "${ARCHIVE_EXT}" ]; then
-		local SQFS_FILE=${ARCHIVE_IMAGE%.*}
+	if [ "" == "${SQFS_FILE}" ]; then
+		local CMD="mksquashfs ${ARCHIVE_DIR} ${ARCHIVE_IMAGE} -comp ${ALGORITHM} -noI -no-duplicates -progress"
+		INFO "$(PURPLE ${CMD})" && ${CMD}
+	else
 		local CMD="mksquashfs ${ARCHIVE_DIR} ${SQFS_FILE} -comp ${ALGORITHM} -noI -noD -noF -noX -no-duplicates -progress"
 		INFO "$(PURPLE ${CMD})" && ${CMD}
 		local SIZE=$(du -sb ${SQFS_FILE} | awk '{print $1}')
-		CMD="cat ${SQFS_FILE} | pv -s ${SIZE} | pxz -c > ${ARCHIVE_IMAGE}"
+		CMD="cat ${SQFS_FILE} | pv -s ${SIZE} | ${COMPRESSOR} -c > ${ARCHIVE_IMAGE}"
 		INFO "$(PURPLE ${CMD})" && bash -c "${CMD}"
-	else
-		local CMD="mksquashfs ${ARCHIVE_DIR} ${ARCHIVE_IMAGE} -comp ${ALGORITHM} -noI -no-duplicates -progress"
-		INFO "$(PURPLE ${CMD})" && ${CMD}
 	fi
 }

@@ -19,7 +19,7 @@ function build_image {
 	local DEVICE_IMAGE_FILE="${CACHE_DIR}/${NAME}"
 	NAME=${NAME%.*}
 	local ARCHIVE_DIR="/tmp/${NAME}-$(date '+%Y%m%d%H%M%S')"
-	local ARCHIVE_IMAGE="/tmp/${NAME}.sxz"
+	local ARCHIVE_IMAGE="/tmp/${NAME}.sqfs.xz"
 
 	rm -rf ${ARCHIVE_DIR}
 

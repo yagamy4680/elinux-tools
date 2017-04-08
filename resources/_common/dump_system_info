@@ -27,14 +27,13 @@ function show_os_architecture {
 
 function dump_sys_info {
 cat <<__EOF__
-system:
-	os:
-		kernel: "$(show_kernel_name)"
-		kernel_version: "$(show_kernel_release_version)"
-		kernel_architecture: "$(show_os_architecture)"
-		dist_name: "$(show_os_distribution_name)"
-		dist_codename: "$(show_os_distribution_codename)"
+kernel: $(show_kernel_name)
+kernel_version: $(show_kernel_release_version)
+kernel_architecture: $(show_os_architecture)
+dist_name: $(show_os_distribution_name)
+dist_codename: $(show_os_distribution_codename)
 __EOF__
 }
 
-dump_sys_info $@
+[ "" == "$1" ] && dump_sys_info && exit 0
+dump_sys_info > $1

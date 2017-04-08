@@ -28,7 +28,29 @@ __EOF__
 }
 
 
+function generate_rootfs_metadata {
+	local CODENAME=$1
+	local ROOTFS_METADATA_FILE=$2
+	local ROOTFS_DIR=$3
+	local ROOTFS_KERNEL_VERSION=$4
+	local TMP_FILE=$(mktemp /tmp/XXXXXX)
+
+	RUN_CMD cp ${CLI_RESOURCE_DIR}/_common/dump_system_info /tmp
+	PATH=${CLI_BIN_DIR}:${PATH} \
+		CHROOT_SPECIFIC=${CODENAME} \
+		${CLI_NAME} chroot script ${ROOTFS_DIR} -c "/tmp/dump_system_info ${TMP_FILE}"
+
+	sed -i '/^kernel_version.*/d' ${TMP_FILE}
+	echo "board_dist_codename: ${CODENAME}"  >> ${TMP_FILE}
+	echo "kernel_version: ${KERNEL_VERSION}" >> ${TMP_FILE}
+	cat ${TMP_FILE} | sort > ${ROOTFS_METADATA_FILE}
+	cat ${ROOTFS_METADATA_FILE} | awk '{printf "\t%s\n", $0}'
+	rm -f ${TMP_FILE}
+}
+
+
 function cad_rpb2a {
+	local BOARD_DIST_CODENAME=$1
 	local ARCHIVE_PARTITION_DIR="${ARCHIVE_DIR}/partitions"
 	local ARCHIVE_VERBOSE_DIR="${ARCHIVE_DIR}/.verbose"
 	local ARCHIVE_OPT_DIR="${ARCHIVE_DIR}/opts"
@@ -54,18 +76,29 @@ function cad_rpb2a {
 		jq ".partitions.p2.uuid = \"${UUID}\"" | \
 		jq ".partitions.p2.p_start = \"3%\"" | \
 		jq ".partitions.p2.p_end = \"100%\"" | \
-		jq ".partitions.p2.rootfs = true" \
-		jq ".partitions.p2.rootfs_type = \"raspbian\"" | \
+		jq ".partitions.p2.rootfs = true" | \
+		jq ".partitions.p2.rootfs_type = \"${BOARD_DIST_CODENAME}\"" | \
 		> ${ARCHIVE_CONFIG_JSON}
 
 	cat ${ARCHIVE_CONFIG_JSON} | jq .
 	RUN_CMD cd ${ARCHIVE_PARTITION_DIR}/p2/usr/bin
 	RUN_CMD ln -s /tmp/qemu-arm-static .
 	RUN_CMD cd ${CURRENT}
+
+	# because the script is running on x86 machine, and uses qemu
+	# to simulate ARM environment, the kernel version in ${ARCHIVE_DIR}/rootfs.yaml
+	# is the version of currently-running x86 kernel.
+	#
+	# simply search /lib/modules in ROOTFS directory, and find the first one
+	# as the kernel version (inaccurate... but a simple solution).
+	#
+	local KERNEL_VERSION=$(find ${ARCHIVE_PARTITION_DIR}/p2/lib/modules/ -maxdepth 1 -mindepth 1 | sort | xargs -I{} sh -c "basename {}" | head -n1)
+	generate_rootfs_metadata ${BOARD_DIST_CODENAME} ${ARCHIVE_DIR}/rootfs.yaml ${ARCHIVE_DIR}/partitions/p2 ${KERNEL_VERSION}
 }
 
 
 function cad_bb1to2 {
+	local BOARD_DIST_CODENAME=$1
 	local ARCHIVE_PARTITION_DIR="${ARCHIVE_DIR}/partitions"
 	local ARCHIVE_VERBOSE_DIR="${ARCHIVE_DIR}/.verbose"
 	local ARCHIVE_OPT_DIR="${ARCHIVE_DIR}/opts"
@@ -93,7 +126,7 @@ function cad_bb1to2 {
 		jq ".partitions.p2.uuid = \"${UUID}\"" | \
 		jq ".partitions.p2.p_start = \"3%\"" | \
 		jq ".partitions.p2.p_end = \"100%\"" | \
-		jq ".partitions.p2.rootfs_type = \"bone\"" | \
+		jq ".partitions.p2.rootfs_type = \"${BOARD_DIST_CODENAME}\"" | \
 		jq ".partitions.p2.rootfs = true" \
 		> ${ARCHIVE_CONFIG_JSON}
 
@@ -110,6 +143,16 @@ function cad_bb1to2 {
 	RUN_CMD cd ${ARCHIVE_PARTITION_DIR}/p2/usr/bin
 	RUN_CMD ln -s /tmp/qemu-arm-static .
 	RUN_CMD cd ${CURRENT}
+
+	# because the script is running on x86 machine, and uses qemu
+	# to simulate ARM environment, the kernel version in ${ARCHIVE_DIR}/rootfs.yaml
+	# is the version of currently-running x86 kernel.
+	#
+	# needs to get the correct kernel version from uboot configuration
+	# file.
+	#
+	local KERNEL_VERSION=$(cat ${ARCHIVE_PARTITION_DIR}/p2/boot/uEnv.txt | grep -v "^#" | grep -v "^$" | grep "^uname_r" | awk -F'=' '{print $2}')
+	generate_rootfs_metadata ${BOARD_DIST_CODENAME} ${ARCHIVE_DIR}/rootfs.yaml ${ARCHIVE_DIR}/partitions/p2 ${KERNEL_VERSION}
 }
 
 
@@ -122,8 +165,11 @@ function mycli_command_entry {
 	shift
 
 	case "${CONVERSION_PROCEDURE}" in
-		bb1to2|rpb2a)
-			cad_${CONVERSION_PROCEDURE} $@
+		bb1to2)
+			cad_${CONVERSION_PROCEDURE} "bone"
+			;;
+		rpb2a)
+			cad_${CONVERSION_PROCEDURE} "raspbian"
 			;;
 		"")
 			ERR "missing conversion procedure..."
