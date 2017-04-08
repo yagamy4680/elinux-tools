@@ -28,12 +28,15 @@ module.exports = exports =
 		json = JSON.parse text
 		global.context = []
 		for key, value of json
+			xs = null
+			ys = null
 			xs = JSON.stringify value if \object is typeof value
 			xs = "#{value}" unless xs?
 			ys = if prefix is "" then key else "#{prefix}_#{key}"
 			ys = ys.replace /-/g, '_'
 			ys = ys.to-upper-case!
 			line = "export #{ys}=\"#{xs}\""
+			# console.error "#{key}: #{value} => #{line}"
 			global.context.push line
 		global.context.push ""
 		xs = global.context.join "\n"
