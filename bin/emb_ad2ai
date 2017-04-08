@@ -48,7 +48,7 @@ function mycli_command_entry {
 			;;
 		xz|gz)
 			[ "${ARCHIVE_IMAGE}" == "$(basename ${ARCHIVE_IMAGE} .sqfs.${ARCHIVE_EXT})" ] && ERR "unsupported format: ${ARCHIVE_IMAGE}" && exit 2
-			SQFS_FILE="$(basename ${ARCHIVE_IMAGE} .sqfs.${ARCHIVE_EXT}).sqfs"
+			SQFS_FILE=$(echo ${ARCHIVE_IMAGE} | tr '.' '\n' | sed '$ d' | tr '\n' '.' | sed 's/\.$//g')
 			[ "xz" == "${ARCHIVE_EXT}" ] && ALGORITHM="xz" && COMPRESSOR="pxz"
 			;;
 		*)
