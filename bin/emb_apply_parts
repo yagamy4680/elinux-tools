@@ -39,6 +39,7 @@ function dump_pkg_dependencies {
 function verify_ad {
 	export AD_CONF_JSON="${AD_TOPDIR}/config.json"
 	export AD_PARTITION_DIR="${AD_TOPDIR}/partitions"
+	export AD_ROOTFS_METADATA_FILE="${AD_TOPDIR}/rootfs.yaml"
 
 	[ ! -f "${AD_CONF_JSON}" ] && ERR "invalid archive directory => missing ${AD_CONF_JSON}" && exit 10
 	[ ! -d "${AD_PARTITION_DIR}" ] && ERR "invalid archive directory => missing ${AD_PARTITION_DIR}" && exit 11
@@ -47,11 +48,17 @@ function verify_ad {
 	export AD_ROOTFS_PARTITION=""
 	for index in {1..10}; do
 		local ROOTFS=$(cat ${AD_CONF_JSON} | jq ".partitions.p${index}.rootfs")
-		[ "true" == "${ROOTFS}" ] && export AD_ROOTFS_PARTITION="p${index}" && break
+		if [ "true" == "${ROOTFS}" ]; then
+			export AD_ROOTFS_PARTITION="p${index}"
+			export AD_ROOTFS_TYPE=$(cat ${AD_CONF_JSON} | jq ".partitions.p${index}.rootfs_type")
+			break
+		fi
 	done
 	
 	[ "" == "${AD_ROOTFS_PARTITION}" ] && ERR "missing rootfs partition definition in ${AD_CONF_JSON}" && exit 13
 	INFO "detect rootfs partition: $(LIGHT_GREEN ${AD_ROOTFS_PARTITION}) ($(GRAY ${AD_PARTITION_DIR}/${AD_ROOTFS_PARTITION}))"
+
+	[ ! -f "${AD_ROOTFS_METADATA_FILE}" ] && ERR "invalid archive directory => missing ${AD_ROOTFS_METADATA_FILE}" && exit 14
 }
 
 
@@ -151,6 +158,28 @@ function finalize_parts_dirs {
 }
 
 
+function initialize_work_dir {
+	mkdir -p ${AD_BUILD_WORK_TOPDIR}
+
+	local ENV_JSON1="${AD_BUILD_WORK_ENV_JSON}.1"
+	local ENV_JSON2="${AD_BUILD_WORK_ENV_JSON}.2"
+	echo "{}" > ${ENV_JSON1}
+	echo "{}" > ${ENV_JSON2}
+
+	[ "null" != "$(cat ${AD_BUILD_CONF_JSON} | jq .envs)" ] && cat ${AD_BUILD_CONF_JSON} | jq .envs > ${ENV_JSON2}
+	RUN_CMD ${TRANSFORM} yaml2json -s ${AD_ROOTFS_METADATA_FILE} -o ${ENV_JSON1}
+	RUN_CMD ${TRANSFORM} jsons -o ${AD_BUILD_WORK_ENV_JSON} ${ENV_JSON2} ${ENV_JSON1}
+	RUN_CMD ${TRANSFORM} json2env -s ${AD_BUILD_WORK_ENV_JSON} -o ${AD_BUILD_WORK_ENV_BASH}
+
+	cat ${AD_BUILD_WORK_ENV_BASH} | awk '{printf "\t%s\n", $0}'
+}
+
+
+function finalize_work_dir {
+	return
+}
+
+
 function mycli_command_entry {
 	export AD_TOPDIR=$1
 	export AD_BUILD_CONF_JSON=$2
@@ -167,11 +196,13 @@ function mycli_command_entry {
 	export PARTS=($(cat ${AD_BUILD_CONF_JSON} | jq .parts | jq .[] | sed 's/"//g'))
 	export AD_BUILD_WORK_TOPDIR="/tmp/${CLI_PROJECT_NAME}/${CLI_ACTION}_$(date '+%Y%m%d%H%M%S')"
 	export AD_BUILD_WORK_PARTS_FILE="${AD_BUILD_WORK_TOPDIR}/parts.txt"
-	export AD_BUILD_WORK_DEBIAN_PKG_LIST="${AD_BUILD_WORK_TOPDIR}/debian.txt"
-	export AD_BUILD_WORK_PYTHON2_PKG_LIST="${AD_BUILD_WORK_TOPDIR}/python2.txt"
-	export AD_BUILD_WORK_PYTHON3_PKG_LIST="${AD_BUILD_WORK_TOPDIR}/python3.txt"
-	mkdir -p ${AD_BUILD_WORK_TOPDIR}
+	export AD_BUILD_WORK_DEBIAN_PKG_LIST="${AD_BUILD_WORK_TOPDIR}/package-debian.txt"
+	export AD_BUILD_WORK_PYTHON2_PKG_LIST="${AD_BUILD_WORK_TOPDIR}/package-python2.txt"
+	export AD_BUILD_WORK_PYTHON3_PKG_LIST="${AD_BUILD_WORK_TOPDIR}/package-python3.txt"
+	export AD_BUILD_WORK_ENV_JSON="${AD_BUILD_WORK_TOPDIR}/env.json"
+	export AD_BUILD_WORK_ENV_BASH="${AD_BUILD_WORK_TOPDIR}/env.bash"
 
+	initialize_work_dir
 	initialize_parts_dirs
 
 	find ${AD_BUILD_WORK_TOPDIR} | sort | awk '{printf "\t%s\n", $0}'
@@ -180,4 +211,5 @@ function mycli_command_entry {
 	# INFO "${AD_BUILD_WORK_PYTHON3_PKG_LIST} => \n$(cat ${AD_BUILD_WORK_PYTHON3_PKG_LIST})"
 
 	finalize_parts_dirs
+	finalize_work_dir
 }

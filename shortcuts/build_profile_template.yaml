@@ -10,11 +10,11 @@ parts:
 envs:
   # Possible values: `bone`, `raspbian`
   #
-  BOARD_DIST_CODENAME: bone
+  board_dist_codename: bone
 
   # Possible values: `bbg`, `bbgw`, `piz`, `pizw`, `pi2`, `pi3`
   #
-  BOARD: bbgw
+  board: bbgw
 
 
 configs:
