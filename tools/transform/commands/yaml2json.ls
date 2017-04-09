@@ -30,4 +30,4 @@ module.exports = exports =
 		text = JSON.stringify xs
 		(write-err) <- fs.writeFile output, text
 		return ERR_EXIT "failed to write #{output} because of #{write-err}", 2 if write-err?
-		return process.exit 0
+		return global.safe-exit!

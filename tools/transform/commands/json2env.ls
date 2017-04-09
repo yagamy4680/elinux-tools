@@ -42,4 +42,4 @@ module.exports = exports =
 		xs = global.context.join "\n"
 		(write-err, buffer) <- fs.writeFile output, xs
 		return ERR_EXIT "failed to write #{output} because of #{write-err}", 2 if write-err?
-		return process.exit 0
+		return global.safe-exit!

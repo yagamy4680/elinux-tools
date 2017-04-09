@@ -1,5 +1,10 @@
 #!/usr/bin/env lsc
 #
+global.start-time = new Date!
+global.safe-exit = ->
+	# console.log "\ttotal time: #{(new Date!) - global.start-time}"
+	return process.exit 0
+
 require! <[yargs]>
 
 argv = 
