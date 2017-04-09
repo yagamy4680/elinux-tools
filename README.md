@@ -1,6 +1,15 @@
 # elinux-tools
 Tools for Embedded Linux Development.
 
+## Prerequisites
+
+Debian/Ubuntu:
+
+```text
+apt-get install -y squashfs-tools pxz
+```
+
+
 
 ## Benchmark for Compression Sizes
 
