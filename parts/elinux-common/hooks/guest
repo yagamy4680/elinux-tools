@@ -4,4 +4,5 @@
 function chroot_entry {
 	INFO "hello"
 	uname -a
+	apt-get update
 }

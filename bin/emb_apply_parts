@@ -169,7 +169,7 @@ function process_part_script {
 
 		# Generate script
 		#
-		PART=${PART} LOADER=${QEMU_LOADER_SCRIPT} ENV_BASH=${QEMU_BASH_ENV} generate_inner_script ${TMP_FILE}
+		PART=${PART} LOADER=${QEMU_LOADER_SCRIPT} ENV_BASH=$(echo ${QEMU_BASH_ENV} | sed "s|${AD_ROOTFS_DIR}||g") generate_inner_script ${TMP_FILE}
 		INFO "run script with qemu: $(PURPLE $(cat ${TMP_FILE}))"
 
 		# Chroot and run
@@ -282,12 +282,17 @@ function finalize_work_dir {
 
 
 function mycli_command_entry {
+	local CURRENT=$(pwd)
 	export AD_TOPDIR=$1
 	export AD_BUILD_CONF_JSON=$2
 	[ "" == "${AD_TOPDIR}" ] && ERR "please specify ARCHIVE_DIRECTORY" && exit 1
 	[ "" == "${AD_BUILD_CONF_JSON}" ] && ERR "please specify BUILD_CONF" && exit 2
 	[ ! -d "${AD_TOPDIR}" ] && ERR "missing directory ${AD_TOPDIR}" && exit 3
 	[ ! -f "${AD_BUILD_CONF_JSON}" ] && ERR "missing build configuration file ${AD_BUILD_CONF_JSON}" && exit 4
+	cd ${AD_TOPDIR}
+	export AD_TOPDIR=$(pwd)
+	cd ${CURRENT}
+
 	verify_ad
 
 	jq . ${AD_BUILD_CONF_JSON} > /dev/null 2>&1
