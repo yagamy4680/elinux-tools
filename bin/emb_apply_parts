@@ -201,7 +201,9 @@ function mycli_command_entry {
 	jq . ${AD_BUILD_CONF_JSON} > /dev/null 2>&1
 	[ "0" != "$?" ] && ERR "invalid json format => ${AD_BUILD_CONF_JSON}" && exit 5
 
-	export TRANSFORM="${CLI_DIR}/tools/transform/app.ls"
+	export TRANSFORM="${CLI_DIR}/tools/transform.js"
+	[ "true" == "${DEBUG_TRANSFORM}" ] && export TRANSFORM="${CLI_DIR}/tools/transform/app.ls"
+
 	export PARTS=($(read_part_list ${AD_BUILD_CONF_JSON}))
 	export AD_BUILD_WORK_TOPDIR="/tmp/${CLI_PROJECT_NAME}/${CLI_ACTION}_$(date '+%Y%m%d%H%M%S')"
 	export AD_BUILD_WORK_PARTS_FILE="${AD_BUILD_WORK_TOPDIR}/parts.txt"

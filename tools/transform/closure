@@ -1,0 +1,72 @@
+#!/bin/bash
+#
+
+function check_prerequisites {
+	[ "" == "$(which browserify)" ] && echo "please install browserify first" && exit 1
+	[ "" == "$(which uglifyjs)" ] && echo "please install uglifyjs first" && exit 1
+
+	local CURRENT=$(pwd)
+	export APP_ENTRY_LS=$1
+	[ ! -f "${APP_ENTRY_LS}" ] && echo "missing app.ls: ${APP_ENTRY_LS}" && exit 1
+
+	cd $(dirname $1)
+	export APP_DIR=$(pwd)
+	[ ! -d "${APP_DIR}/node_modules" ] && echo "please install all required packages first ..." && exit 1
+	[ ! -d "${APP_DIR}/node_modules/browserify-livescript" ] && npm install browserify-livescript
+
+	export APP_BUNDLE_JS="${APP_DIR}.bundle.js"
+	export APP_EXECUTABLE_JS="${APP_DIR}.js"
+	cd ${CURRENT}
+}
+
+
+function pack {
+local TMP_FILE=$(mktemp /tmp/XXXXXX)
+cat <<__EOF__ > ${TMP_FILE}
+#!/usr/bin/env node
+$(cat $1)
+__EOF__
+chmod +x ${TMP_FILE}
+[ "" == "$2" ] && mv ${TMP_FILE} $1 && return 0
+[ -f "$2" ] && rm -f $2
+mv ${TMP_FILE} $2
+}
+
+
+function run_cmd {
+	local CMD="$@"
+	echo ${CMD}
+	${BASH} -c "${CMD}" 2>&1 | awk '{printf "\t%s\n", $0}'
+	[ "0" != "$?" ] && exit 1
+}
+
+
+function compile {
+	check_prerequisites "$(dirname $0)/app.ls"
+	local CURRENT=$(pwd)
+	local CMD=""
+
+	run_cmd \
+		NODE_PATH=${APP_DIR}/node_modules \
+		browserify \
+			--node \
+			--extension=ls \
+			-t browserify-livescript \
+			--outfile ${APP_BUNDLE_JS} \
+			${APP_ENTRY_LS}
+
+	run_cmd \
+		uglifyjs \
+			--compress \
+			--mangle -p 5 \
+			--output ${APP_EXECUTABLE_JS} \
+			${APP_BUNDLE_JS}
+	
+	pack ${APP_BUNDLE_JS}
+	pack ${APP_EXECUTABLE_JS}
+	
+	# browserify --node --extension=ls -t browserify-livescript --outfile ${TMP1} --full-paths ${SRC}
+	# discify ${TMP1} > /tmp/aa.html
+}
+
+compile $@
