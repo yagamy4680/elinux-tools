@@ -75,7 +75,7 @@ function verify_ad {
 		local ROOTFS=$(cat ${AD_CONF_JSON} | jq ".partitions.p${index}.rootfs")
 		if [ "true" == "${ROOTFS}" ]; then
 			export AD_ROOTFS_PARTITION="p${index}"
-			export AD_ROOTFS_TYPE=$(cat ${AD_CONF_JSON} | jq ".partitions.p${index}.rootfs_type")
+			export AD_ROOTFS_TYPE=$(cat ${AD_CONF_JSON} | jq ".partitions.p${index}.rootfs_type" | sed 's/"//g')
 			break
 		fi
 	done
@@ -135,6 +135,12 @@ chmod +x $1
 }
 
 
+function run_bash_cmd {
+	INFO "$(PURPLE $@)"
+	$BASH -c "$@"
+}
+
+
 function process_part_script {
 	local PART=$1
 	local PART_WORK_DIR="${AD_BUILD_WORK_PARTS_DIR}/${PART}"
@@ -149,25 +155,34 @@ function process_part_script {
 
 	local LOADER="${AD_ROOTFS_WORK_ELINUX_TOOLS_DIR}/resources/_common/load_and_run"
 
-	[ "true" == "${HOST_HOOK_EXISTED}" ] && RUN_CMD_STREAMING "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host pre_image"
-	[ "true" == "${HOST_HOOK_EXISTED}" ] && RUN_CMD_STREAMING "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host pre_guest"
+	[ "true" == "${HOST_HOOK_EXISTED}" ] && run_bash_cmd "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host pre_image"
+	[ "true" == "${HOST_HOOK_EXISTED}" ] && run_bash_cmd "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host pre_guest"
 
 	if [ "true" == "${GUEST_HOOK_EXISTED}" ]; then
 		local QEMU_BASH_ENV="${AD_BUILD_WORK_ENV_BASH}.qemu"
 		local QEMU_LOADER_SCRIPT=$(echo ${LOADER} | sed "s|${AD_ROOTFS_DIR}||g")
 		local TMP_FILE=$(mktemp /tmp/XXXXXX)
+
+		# Change path to relative path inside that root directory
+		# 
 		cat ${AD_BUILD_WORK_ENV_BASH} | sed "s|${AD_ROOTFS_DIR}||g" > ${QEMU_BASH_ENV}
-		# cat ${QEMU_BASH_ENV} | awk '{printf "\t%s\n", $0}'
+
+		# Generate script
+		#
 		PART=${PART} LOADER=${QEMU_LOADER_SCRIPT} ENV_BASH=${QEMU_BASH_ENV} generate_inner_script ${TMP_FILE}
 		INFO "run script with qemu: $(PURPLE $(cat ${TMP_FILE}))"
-		RUN_CMD_STREAMING "${CLI_NAME} chroot script ${AD_PARTITION_DIR}/${AD_ROOTFS_PARTITION} ${TMP_FILE}"
+
+		# Chroot and run
+		#
+		run_bash_cmd "CHROOT_SPECIFIC=${AD_ROOTFS_TYPE} ${CLI_NAME} chroot script ${AD_ROOTFS_DIR} ${TMP_FILE}"
+
 		RUN_CMD rm -f ${TMP_FILE}
 		RUN_CMD rm -f ${QEMU_BASH_ENV}
 		# ${CLI_NAME} chroot shell ${AD_PARTITION_DIR}/${AD_ROOTFS_PARTITION}
 	fi
 
-	[ "true" == "${HOST_HOOK_EXISTED}" ] && RUN_CMD_STREAMING "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host post_guest"
-	[ "true" == "${HOST_HOOK_EXISTED}" ] && RUN_CMD_STREAMING "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host post_image"
+	[ "true" == "${HOST_HOOK_EXISTED}" ] && run_bash_cmd "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host post_guest"
+	[ "true" == "${HOST_HOOK_EXISTED}" ] && run_bash_cmd "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host post_image"
 }
 
 
