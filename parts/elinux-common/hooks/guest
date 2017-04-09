@@ -1,0 +1,7 @@
+#!/bin/bash
+#
+
+function chroot_entry {
+	INFO "hello"
+	uname -a
+}

@@ -24,6 +24,23 @@ __EOF__
 }
 
 
+function append_env_bash {
+cat <<__EOF__ >> $1
+
+# Environment Variables from $BASH_SOURCE
+#
+export AD_BUILD_WORK_TOPDIR="${AD_BUILD_WORK_TOPDIR}"
+export AD_BUILD_WORK_DEBIAN_PKG_LIST="${AD_BUILD_WORK_DEBIAN_PKG_LIST}"
+export AD_BUILD_WORK_PYTHON2_PKG_LIST="${AD_BUILD_WORK_PYTHON2_PKG_LIST}"
+export AD_BUILD_WORK_PYTHON3_PKG_LIST="${AD_BUILD_WORK_PYTHON3_PKG_LIST}"
+
+export CLI_DIR="${AD_ROOTFS_WORK_CLI_DIR}"
+export BASH_UTIL_DIR="${AD_ROOTFS_WORK_BASH_UTILS_DIR}"
+export ELINUX_TOOLS_DIR="${AD_ROOTFS_WORK_ELINUX_TOOLS_DIR}"
+__EOF__
+}
+
+
 function read_part_list {
 cat <<__EOF__
 elinux-common
@@ -76,7 +93,7 @@ function process_part_pre {
 	local PART_CONFIG_SRC="${PART_DIR}/config.ls"
 	local PART_DEFAULTS_SRC="${PART_DIR}/defaults.yaml"
 
-	local PART_WORK_DIR="${AD_BUILD_WORK_TOPDIR}/parts/${PART}"
+	local PART_WORK_DIR="${AD_BUILD_WORK_PARTS_DIR}/${PART}"
 	local PART_WORK_CONFIG_JSON="${PART_WORK_DIR}.json"
 	local PART_WORK_ENV_JSON_SRC1="${PART_WORK_DIR}.env.json.1"
 	local PART_WORK_ENV_JSON_SRC2="${PART_WORK_DIR}.env.json.2"
@@ -110,9 +127,53 @@ function process_part_pre {
 }
 
 
+function generate_inner_script {
+cat <<__EOF__ > $1
+${LOADER} ${ENV_BASH} ${PART} guest chroot_entry
+__EOF__
+chmod +x $1
+}
+
+
+function process_part_script {
+	local PART=$1
+	local PART_WORK_DIR="${AD_BUILD_WORK_PARTS_DIR}/${PART}"
+
+	local HOST_HOOK_FILE="${PART_WORK_DIR}/hooks/host"
+	local HOST_HOOK_EXISTED="true"
+	local GUEST_HOOK_FILE="${PART_WORK_DIR}/hooks/guest"
+	local GUEST_HOOK_EXISTED="true"
+
+	[ ! -f "${HOST_HOOK_FILE}" ] && HOST_HOOK_EXISTED="false"
+	[ ! -f "${GUEST_HOOK_FILE}" ] && GUEST_HOOK_EXISTED="false"
+
+	local LOADER="${AD_ROOTFS_WORK_ELINUX_TOOLS_DIR}/resources/_common/load_and_run"
+
+	[ "true" == "${HOST_HOOK_EXISTED}" ] && RUN_CMD_STREAMING "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host pre_image"
+	[ "true" == "${HOST_HOOK_EXISTED}" ] && RUN_CMD_STREAMING "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host pre_guest"
+
+	if [ "true" == "${GUEST_HOOK_EXISTED}" ]; then
+		local QEMU_BASH_ENV="${AD_BUILD_WORK_ENV_BASH}.qemu"
+		local QEMU_LOADER_SCRIPT=$(echo ${LOADER} | sed "s|${AD_ROOTFS_DIR}||g")
+		local TMP_FILE=$(mktemp /tmp/XXXXXX)
+		cat ${AD_BUILD_WORK_ENV_BASH} | sed "s|${AD_ROOTFS_DIR}||g" > ${QEMU_BASH_ENV}
+		# cat ${QEMU_BASH_ENV} | awk '{printf "\t%s\n", $0}'
+		PART=${PART} LOADER=${QEMU_LOADER_SCRIPT} ENV_BASH=${QEMU_BASH_ENV} generate_inner_script ${TMP_FILE}
+		INFO "run script with qemu: $(PURPLE $(cat ${TMP_FILE}))"
+		RUN_CMD_STREAMING "${CLI_NAME} chroot script ${AD_PARTITION_DIR}/${AD_ROOTFS_PARTITION} ${TMP_FILE}"
+		RUN_CMD rm -f ${TMP_FILE}
+		RUN_CMD rm -f ${QEMU_BASH_ENV}
+		# ${CLI_NAME} chroot shell ${AD_PARTITION_DIR}/${AD_ROOTFS_PARTITION}
+	fi
+
+	[ "true" == "${HOST_HOOK_EXISTED}" ] && RUN_CMD_STREAMING "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host post_guest"
+	[ "true" == "${HOST_HOOK_EXISTED}" ] && RUN_CMD_STREAMING "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host post_image"
+}
+
+
 function process_part_post {
 	local PART=$1
-	local PART_WORK_DIR="${AD_BUILD_WORK_TOPDIR}/parts/${PART}"
+	local PART_WORK_DIR="${AD_BUILD_WORK_PARTS_DIR}/${PART}"
 	RUN_CMD umount ${PART_WORK_DIR}
 }
 
@@ -180,12 +241,28 @@ function initialize_work_dir {
 	RUN_CMD ${TRANSFORM} jsons -o ${AD_BUILD_WORK_ENV_JSON} ${ENV_JSON2} ${ENV_JSON1}
 	RUN_CMD ${TRANSFORM} json2env -s ${AD_BUILD_WORK_ENV_JSON} -o ${AD_BUILD_WORK_ENV_BASH}
 
+	append_env_bash ${AD_BUILD_WORK_ENV_BASH}
 	cat ${AD_BUILD_WORK_ENV_BASH} | awk '{printf "\t%s\n", $0}'
+
+	RUN_CMD mkdir -p ${AD_ROOTFS_WORK_CLI_DIR}
+	RUN_CMD mkdir -p ${AD_ROOTFS_WORK_BASH_UTILS_DIR}
+	RUN_CMD mkdir -p ${AD_ROOTFS_WORK_ELINUX_TOOLS_DIR}
+	RUN_CMD mount -o bind ${CLI_DIR} ${AD_ROOTFS_WORK_CLI_DIR}
+	RUN_CMD mount -o bind ${BASH_UTIL_DIR} ${AD_ROOTFS_WORK_BASH_UTILS_DIR}
+
+	local CURRENT=$(pwd)
+	cd $(dirname $BASH_SOURCE)
+	cd ..
+	RUN_CMD mount -o bind $(pwd) ${AD_ROOTFS_WORK_ELINUX_TOOLS_DIR}
+	cd ${CURRENT}
 }
 
 
 function finalize_work_dir {
-	return
+	RUN_CMD umount ${AD_ROOTFS_WORK_CLI_DIR}
+	RUN_CMD umount ${AD_ROOTFS_WORK_BASH_UTILS_DIR}
+	RUN_CMD umount ${AD_ROOTFS_WORK_ELINUX_TOOLS_DIR}
+	RUN_CMD rm -rf ${AD_ROOTFS_WORK_DIR}
 }
 
 
@@ -205,7 +282,12 @@ function mycli_command_entry {
 	[ "true" == "${DEBUG_TRANSFORM}" ] && export TRANSFORM="${CLI_DIR}/tools/transform/app.ls"
 
 	export PARTS=($(read_part_list ${AD_BUILD_CONF_JSON}))
-	export AD_BUILD_WORK_TOPDIR="/tmp/${CLI_PROJECT_NAME}/${CLI_ACTION}_$(date '+%Y%m%d%H%M%S')"
+
+	export AD_ROOTFS_DIR="${AD_PARTITION_DIR}/${AD_ROOTFS_PARTITION}"
+	export AD_ROOTFS_WORK_DIR="${AD_ROOTFS_DIR}/work"
+
+	export AD_BUILD_WORK_TOPDIR="${AD_ROOTFS_WORK_DIR}/${CLI_ACTION}_$(date '+%Y%m%d%H%M%S')"
+	export AD_BUILD_WORK_PARTS_DIR="${AD_BUILD_WORK_TOPDIR}/parts"
 	export AD_BUILD_WORK_PARTS_FILE="${AD_BUILD_WORK_TOPDIR}/parts.txt"
 	export AD_BUILD_WORK_DEBIAN_PKG_LIST="${AD_BUILD_WORK_TOPDIR}/package-debian.txt"
 	export AD_BUILD_WORK_PYTHON2_PKG_LIST="${AD_BUILD_WORK_TOPDIR}/package-python2.txt"
@@ -213,13 +295,25 @@ function mycli_command_entry {
 	export AD_BUILD_WORK_ENV_JSON="${AD_BUILD_WORK_TOPDIR}/env.json"
 	export AD_BUILD_WORK_ENV_BASH="${AD_BUILD_WORK_TOPDIR}/env.bash"
 
+	export AD_ROOTFS_WORK_CLI_DIR="${AD_BUILD_WORK_TOPDIR}/cli"
+	export AD_ROOTFS_WORK_ELINUX_TOOLS_DIR="${AD_BUILD_WORK_TOPDIR}/elinux-tools"
+	export AD_ROOTFS_WORK_BASH_UTILS_DIR="${AD_BUILD_WORK_TOPDIR}/bash-utils"
+
 	initialize_work_dir
 	initialize_parts_dirs
 
-	find ${AD_BUILD_WORK_TOPDIR} | sort | awk '{printf "\t%s\n", $0}'
+	find ${AD_BUILD_WORK_TOPDIR} | \
+		grep -v "^${AD_ROOTFS_WORK_CLI_DIR}" | \
+		grep -v "^${AD_ROOTFS_WORK_BASH_UTILS_DIR}" | \
+		grep -v "^${AD_ROOTFS_WORK_ELINUX_TOOLS_DIR}" | \
+		awk '{printf "\t%s\n", $0}'
 	# INFO "${AD_BUILD_WORK_DEBIAN_PKG_LIST} => \n$(cat ${AD_BUILD_WORK_DEBIAN_PKG_LIST})"
 	# INFO "${AD_BUILD_WORK_PYTHON2_PKG_LIST} => \n$(cat ${AD_BUILD_WORK_PYTHON2_PKG_LIST})"
 	# INFO "${AD_BUILD_WORK_PYTHON3_PKG_LIST} => \n$(cat ${AD_BUILD_WORK_PYTHON3_PKG_LIST})"
+
+	for p in "${PARTS[@]}"; do
+		process_part_script $p 	
+	done
 
 	finalize_parts_dirs
 	finalize_work_dir

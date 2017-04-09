@@ -1,0 +1,49 @@
+#!/bin/bash
+#
+
+# Here are variables initiated by load_and_run script:
+#
+#  - PART_NAME
+#  - PART_DIR
+#
+# Here are variables initiated by apply_parts command,
+# stored in ${WORK_DIR}/env.bash
+# 
+#  - AD_BUILD_WORK_TOPDIR           , e.g. /tmp/elinux-tools/apply_parts_20170409164024
+#  - AD_BUILD_WORK_DEBIAN_PKG_LIST  , e.g. /tmp/elinux-tools/apply_parts_20170409164024/package-debian.txt
+#  - AD_BUILD_WORK_PYTHON2_PKG_LIST , e.g. /tmp/elinux-tools/apply_parts_20170409164024/package-python2.txt
+#  - AD_BUILD_WORK_PYTHON3_PKG_LIST ' e.g. /tmp/elinux-tools/apply_parts_20170409164024/package-python3.txt
+#  - CLI_DIR
+#  - ELINUX_TOOLS_DIR
+#
+#  (Following variables are retrieved from ${ARCHIVE_DIR}/rootfs.yaml)
+#  - BOARD_DIST_CODENAME   bone, raspbian, ...
+#  - DIST_CODENAME         trusty, jessie, ...
+#  - DIST_NAME             ubuntu, debian, ...
+#  - KERNEL_ARCHITECTURE   armv7l
+#  - KERNEL                linux
+#  - KERNEL_VERSION        4.1.17-ti-rt-r47
+#
+#  (Following variables are retrieved from the config.json passed to apply_parts subcommand, all are optional)
+#  - BOARD                 bbgw, bbg, piz, pizw, ...
+#  - BOARD_ENV             production, testing, development, ...
+#  - BOARD_PROFILE         abc, def, spider, ...
+#
+# 
+
+function pre_image {
+	INFO "hello"
+	INFO "DIST_CODENAME = ${DIST_CODENAME}"
+}
+
+function pre_guest {
+	INFO "hello"
+}
+
+function post_guest {
+	INFO "hello"
+}
+
+function post_image {
+	INFO "hello"
+}

@@ -1,0 +1,68 @@
+#!/bin/bash
+#
+
+function load_helper_script {
+	local SCRIPT=$1
+	local COLOR='\033[0;32m'
+	local NC='\033[0m'
+	echo -e "loading ${COLOR}${SCRIPT}${NC}"
+	source $1
+}
+
+
+function fn_exist {
+	declare -f -F $1 > /dev/null
+	return $?
+}
+
+
+function check_prerequisites {
+	source ${ENV_BASH}
+	export PART_DIR="${AD_BUILD_WORK_TOPDIR}/parts/${PART}"
+	export PART_HOOK_SCRIPT="${PART_DIR}/hooks/${HOST_OR_GUEST}"
+
+	[ ! -d "${BASH_UTIL_DIR}" ] && echo "missing bash util directory" && exit 10
+	[ ! -d "${PART_DIR}" ] && echo "missing part directory ${PART_DIR}" && exit 11
+
+	# Nothing to do when the hook script is missing
+	#
+	[ ! -f "${PART_HOOK_SCRIPT}" ] && echo "exit immediately because of missing ${PART_HOOK_SCRIPT}" && exit 0
+
+	# Nothing to do when the hook entry function (LOADER_ACTION)
+	# is also missing. 
+	#
+	local PATTERN=$(cat ${PART_HOOK_SCRIPT} | grep "^function ${LOADER_ACTION}")
+	[ "" == "${PATTERN}" ] && echo "exit immediately because of missing ${LOADER_ACTION} function in ${PART_HOOK_SCRIPT}" && exit 0
+}
+
+
+function load_all_files {
+	load_helper_script "${BASH_UTIL_DIR}/verbose"
+	load_helper_script "${BASH_UTIL_DIR}/funcs"
+	init_verbose "${PART}[${LOADER_ACTION}]"
+	load_helper_script ${PART_HOOK_SCRIPT}
+}
+
+
+function loader_main {
+	export ENV_BASH=$1
+	export PART=$2
+	export HOST_OR_GUEST=$3
+	export LOADER_ACTION=$4
+	shift; shift; shift; shift
+
+	[ "" == "${ENV_BASH}" ] && echo "please specify ENV_BASH as 1st parameter for $BASH_SOURCE" && exit 1
+	[ ! -f "${ENV_BASH}" ] && echo "missing ${ENV_BASH}" && exit 2
+	[ "" == "${PART}" ] && echo "please specify the name of PART as 2nd parameter for $BASH_SOURCE" && exit 3
+	[ "" == "${HOST_OR_GUEST}" ] && echo "please specify HOST_OR_GUEST as 3rd parameter for $BASH_SOURCE" && exit 4
+	[ "host" != "${HOST_OR_GUEST}" ] && [ "guest" != "${HOST_OR_GUEST}" ] && echo "3rd parameter for $BASH_SOURCE only allows host or guest, but ${HOST_OR_GUEST}" && exit 5
+	[ "" == "${LOADER_ACTION}" ] && echo "please specify LOADER_ACTION as 4th parameter for $BASH_SOURCE" && exit 6
+
+	check_prerequisites
+	load_all_files
+
+	fn_exist ${LOADER_ACTION} || return 0
+	${LOADER_ACTION} $@
+}
+
+loader_main $@
