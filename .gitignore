@@ -91,3 +91,5 @@ ENV/
 
 # Nodejs settings
 node_modules
+
+/tools/transform.bundle.js
