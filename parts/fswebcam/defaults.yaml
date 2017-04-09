@@ -1,0 +1,10 @@
+## 
+# The Github URL to download the source codes of fswebcam.
+#
+GITHUB_URL: "https://github.com/avafinger/fswebcam.git"
+
+
+## 
+# The options for running `./configure`
+#
+BUILD_CONFIGURE_OPTS: "--prefix=/usr --disable-v4l1 --enable-32bit-buffer"

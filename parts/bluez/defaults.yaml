@@ -1,0 +1,20 @@
+## 
+# The prefix of the URL for source tarball to be downloaded. 
+#
+# Taking `https://www.kernel.org/pub/linux/bluetooth` as example, the
+# bluez 5.32 source tarball file is located at `https://www.kernel.org/pub/linux/bluetooth/bluez-5.32.tar.xz`
+#
+SOURCE_URL: "https://www.kernel.org/pub/linux/bluetooth/bluez-5.32.tar.xz"
+
+
+## 
+# The options for running `./configure`
+#
+BUILD_CONFIGURE_OPTS: "--disable-systemd"
+
+
+## 
+# After `make install`, the option decides to install extra 
+# tool `gatttool` to system bin directory: /usr/local/bin
+#
+INSTALL_GATTTOOL: false
