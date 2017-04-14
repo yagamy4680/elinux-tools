@@ -6,12 +6,9 @@ dependencies:
 		# Utilities
 		#
 		* <[
-			gawk
 			socat
 			screen
-			xz-utils
 			vim
-			telnet
 		]>
 
 	# The python2 packages to be installed via 

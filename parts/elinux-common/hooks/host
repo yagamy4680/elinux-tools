@@ -75,8 +75,8 @@ function copy_partitions {
 			continue
 		fi
 		INFO "${DBG_PREFIX} => [${THE_PART}] copying p${index}"
-		mkdir -p ${DST_DIR}
-		rsync -az ${SRC_DIR}/* ${DST_DIR}/
+		run_my_cmd mkdir -p ${DST_DIR}
+		run_my_cmd rsync -az ${SRC_DIR}/* ${DST_DIR}/
 	done
 }
 
@@ -98,7 +98,7 @@ function copy_rootfs {
 	fi
 
 	INFO "${DBG_PREFIX} => [${THE_PART}] copying rootfs"
-	rsync -az ${SRC_DIR}/* ${DST_DIR}/
+	run_my_cmd rsync -az ${SRC_DIR}/* ${DST_DIR}/
 }
 
 
@@ -129,7 +129,7 @@ function copy_service_files {
 		mkdir -p ${DST_DIR}
 		for file in "${FILES[@]}"; do
 			INFO "${DBG_PREFIX} => [${THE_PART}] prepare ${service} by copying $(basename ${file}) to ${GUEST_WORK_PART_SERVICE_DIR}/${service}"
-			cp ${file} ${DST_DIR}/
+			run_my_cmd cp ${file} ${DST_DIR}/
 		done
 	done
 }

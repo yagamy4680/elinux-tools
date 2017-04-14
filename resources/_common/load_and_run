@@ -16,6 +16,16 @@ function fn_exist {
 }
 
 
+function run_my_cmd {
+	[ "host" == "${HOST_OR_GUEST}" ] && INFO $(GREEN $@) || INFO $(YELLOW $@)
+	if [ "true" == "${NO_TAB}" ]; then
+		$@ 2>&1
+	else
+		$@ 2>&1 | awk '{printf "\t%s\n", $0}'
+	fi
+}
+
+
 function check_prerequisites {
 	source ${ENV_BASH}
 	export PART_DIR="${AD_BUILD_WORK_TOPDIR}/parts/${PART_NAME}"
@@ -33,6 +43,16 @@ function check_prerequisites {
 	#
 	local PATTERN=$(cat ${PART_HOOK_SCRIPT} | grep "^function ${LOADER_ACTION}")
 	[ "" == "${PATTERN}" ] && echo "exit immediately because of missing ${LOADER_ACTION} function in ${PART_HOOK_SCRIPT}" && exit 0
+}
+
+
+function check_environment_variables {
+	for name in "$@"; do
+		local value="${!name}"
+		[ "" == "${value}" ] && ERR "missing $name variable" && return 1
+		INFO "checking $name ... $value"
+	done
+	return 0
 }
 
 

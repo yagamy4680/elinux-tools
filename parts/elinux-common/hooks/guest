@@ -31,11 +31,69 @@
 #
 # 
 
+
+function install_debian_packages {
+	local PKG_FILE=$1
+	NO_TAB="true" run_my_cmd "apt-get update"
+	NO_TAB="true" run_my_cmd "apt-get install -y $(cat ${PKG_FILE} | tr '\n' ' ')"
+}
+
+
+function install_python_packages {
+	local PY_VERSION=$1
+	local PY_PKG_FILE=$2
+	[ ! -f "${PY_PKG_FILE}" ] && return 1
+
+	local TMP_FILE=$(mktemp /tmp/XXXXXX)
+	cat ${PY_PKG_FILE} | grep -v "^#" | grep -v "^$" > ${TMP_FILE}
+	[ "0" == "$(cat ${TMP_FILE} | wc -l)" ] && rm -f ${TMP_FILE} && return 2
+
+	local PIP="pip"
+	local EASY_INSTALL="easy_install"
+	[ "python3" == "${PY_VERSION}" ] && PIP="pip3" && EASY_INSTALL="easy_install3"
+	
+	run_my_cmd "${EASY_INSTALL} --version"
+	run_my_cmd "${PIP} install --upgrade setuptools"
+	run_my_cmd "${PIP} install $(cat ${TMP_FILE} | tr '\n' ' ')"
+	local EXIT_CODE=$?
+	rm -f ${TMP_FILE}
+	return ${EXIT_CODE}
+}
+
+
+function install_all_packages {
+	local TMP_FILE=$(mktemp /tmp/XXXXXX)
+	cat ${AD_BUILD_WORK_DEBIAN_PKG_LIST} | grep -v "^#" > ${TMP_FILE}
+	[ -f "${AD_BUILD_WORK_PYTHON2_PKG_LIST}" ] && [ "0" != "$(cat ${AD_BUILD_WORK_PYTHON2_PKG_LIST}) | wc -l)" ] && echo "python-pip" >> ${TMP_FILE}
+	[ -f "${AD_BUILD_WORK_PYTHON3_PKG_LIST}" ] && [ "0" != "$(cat ${AD_BUILD_WORK_PYTHON3_PKG_LIST}) | wc -l)" ] && echo "python3-pip" >> ${TMP_FILE}
+
+	local EXIT_CODE="0"
+
+	if [ "0" != "$(cat ${TMP_FILE} | wc -l)" ]; then
+		case "${DIST_NAME}" in
+			ubuntu|debian)
+				install_debian_packages ${TMP_FILE}
+				EXIT_CODE=$?; [ "0" != "${EXIT_CODE}" ] && return ${EXIT_CODE}
+				;;
+			*)
+				ERR "unsupported linux distribution: ${DIST_NAME}"
+				return 1
+				;;
+		esac
+	fi
+	rm -f ${TMP_FILE}
+
+	install_python_packages python2 ${AD_BUILD_WORK_PYTHON2_PKG_LIST}
+	install_python_packages python3 ${AD_BUILD_WORK_PYTHON3_PKG_LIST}
+}
+
+
 function run_service_useradd {
 	local DIR=$1
 	find ${DIR} -type f | awk '{printf "\t%s\n", $0}'
 	return 0
 }
+
 
 function run_service_hello {
 	local DIR=$1
@@ -43,6 +101,17 @@ function run_service_hello {
 	return 0
 }
 
+
+function run_all_services {
+	local CHROOT_WORK_PART_SERVICE_DIR="${AD_BUILD_WORK_TOPDIR}/${PART_NAME}/services"
+	local SERVICES=($(cat ${BASH_SOURCE[0]} | grep "^function run_service_" | awk '{print $2}' | sed 's/^run_service_//g'))
+	for service in "${SERVICES[@]}"; do
+		local SERVICE_DIR="${CHROOT_WORK_PART_SERVICE_DIR}/${service}"
+		[ ! -d "${SERVICE_DIR}" ] && continue
+		INFO "service: ${service}"
+		run_service_${service} ${SERVICE_DIR}
+	done
+}
 
 
 #
@@ -71,16 +140,13 @@ function chroot_entry {
 	uname -a
 	# env | sort | grep "^AD_" | awk '{printf "\t%s\n", $0}'
 
-	[ "" == "${AD_BUILD_WORK_TOPDIR}" ] && ERR "missing AD_BUILD_WORK_TOPDIR variable" && return 3
-	[ "" == "${AD_ROOTFS_DIR}" ] && ERR "missing AD_ROOTFS_DIR variable" && return 4
+	check_environment_variables \
+		AD_BUILD_WORK_TOPDIR \
+		AD_ROOTFS_DIR \
+		AD_BUILD_WORK_DEBIAN_PKG_LIST \
+		AD_BUILD_WORK_PYTHON2_PKG_LIST \
+		AD_BUILD_WORK_PYTHON3_PKG_LIST || return 1
 
-	local CHROOT_WORK_PART_SERVICE_DIR="${AD_BUILD_WORK_TOPDIR}/${PART_NAME}/services"
-	local SERVICES=($(cat ${BASH_SOURCE[0]} | grep "^function run_service_" | awk '{print $2}' | sed 's/^run_service_//g'))
-
-	for service in "${SERVICES[@]}"; do
-		local SERVICE_DIR="${CHROOT_WORK_PART_SERVICE_DIR}/${service}"
-		[ ! -d "${SERVICE_DIR}" ] && continue
-		INFO "service: ${service}"
-		run_service_${service} ${SERVICE_DIR}
-	done
+	install_all_packages || return 1
+	run_all_services
 }
