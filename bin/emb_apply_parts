@@ -1,5 +1,4 @@
-#!/bin/bash
-#
+
 ##DOC:	build archive directory with parts
 
 function mycli_command_prerequisites {
@@ -27,7 +26,7 @@ __EOF__
 function append_env_bash {
 cat <<__EOF__ >> $1
 
-# Environment Variables from $BASH_SOURCE
+# Environment Variables from ${BASH_SOURCE[0]}
 #
 export AD_BUILD_WORK_TOPDIR="${AD_BUILD_WORK_TOPDIR}"
 export AD_BUILD_WORK_DEBIAN_PKG_LIST="${AD_BUILD_WORK_DEBIAN_PKG_LIST}"
@@ -155,7 +154,9 @@ function process_part_script {
 
 	local LOADER="${AD_ROOTFS_WORK_ELINUX_TOOLS_DIR}/resources/_common/load_and_run"
 
-	[ "true" == "${HOST_HOOK_EXISTED}" ] && run_bash_cmd "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host pre_image"
+	export IGNORE_DEBUG_LOAD_HELPER="true"
+
+	 "true" == "${HOST_HOOK_EXISTED}" ] && run_bash_cmd "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host pre_image"
 	[ "true" == "${HOST_HOOK_EXISTED}" ] && run_bash_cmd "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host pre_guest"
 
 	if [ "true" == "${GUEST_HOOK_EXISTED}" ]; then
@@ -183,6 +184,8 @@ function process_part_script {
 
 	[ "true" == "${HOST_HOOK_EXISTED}" ] && run_bash_cmd "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host post_guest"
 	[ "true" == "${HOST_HOOK_EXISTED}" ] && run_bash_cmd "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host post_image"
+
+	unset IGNORE_DEBUG_LOAD_HELPER
 }
 
 

@@ -31,19 +31,6 @@
 #
 # 
 
-function run_service_useradd {
-	local DIR=$1
-	find ${DIR} -type f | awk '{printf "\t%s\n", $0}'
-	return 0
-}
-
-function run_service_hello {
-	local DIR=$1
-	find ${DIR} -type f | awk '{printf "\t%s\n", $0}'
-	return 0
-}
-
-
 
 #
 # The chroot_entry (guest script) running inside qemu with chroot,
@@ -68,19 +55,6 @@ function run_service_hello {
 #  - ELINUX_TOOLS_DIR
 #
 function chroot_entry {
-	uname -a
-	# env | sort | grep "^AD_" | awk '{printf "\t%s\n", $0}'
-
-	[ "" == "${AD_BUILD_WORK_TOPDIR}" ] && ERR "missing AD_BUILD_WORK_TOPDIR variable" && return 3
-	[ "" == "${AD_ROOTFS_DIR}" ] && ERR "missing AD_ROOTFS_DIR variable" && return 4
-
-	local CHROOT_WORK_PART_SERVICE_DIR="${AD_BUILD_WORK_TOPDIR}/${PART_NAME}/services"
-	local SERVICES=($(cat ${BASH_SOURCE[0]} | grep "^function run_service_" | awk '{print $2}' | sed 's/^run_service_//g'))
-
-	for service in "${SERVICES[@]}"; do
-		local SERVICE_DIR="${CHROOT_WORK_PART_SERVICE_DIR}/${service}"
-		[ ! -d "${SERVICE_DIR}" ] && continue
-		INFO "service: ${service}"
-		run_service_${service} ${SERVICE_DIR}
-	done
+	INFO "${PART_NAME} => uname -a"
+	return 0
 }

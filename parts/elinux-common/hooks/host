@@ -9,10 +9,6 @@
 # Here are variables initiated by apply_parts command,
 # stored in ${WORK_DIR}/env.bash
 # 
-#  - AD_BUILD_WORK_TOPDIR           , e.g. /tmp/elinux-tools/apply_parts_20170409164024
-#  - AD_BUILD_WORK_DEBIAN_PKG_LIST  , e.g. /tmp/elinux-tools/apply_parts_20170409164024/package-debian.txt
-#  - AD_BUILD_WORK_PYTHON2_PKG_LIST , e.g. /tmp/elinux-tools/apply_parts_20170409164024/package-python2.txt
-#  - AD_BUILD_WORK_PYTHON3_PKG_LIST ' e.g. /tmp/elinux-tools/apply_parts_20170409164024/package-python3.txt
 #  - CLI_DIR
 #  - ELINUX_TOOLS_DIR
 #
@@ -29,21 +25,176 @@
 #  - BOARD_ENV             production, testing, development, ...
 #  - BOARD_PROFILE         abc, def, spider, ...
 #
+#  (Following variables are derived from parent process `emb_apply_parts`)
+#  - AD_BUILD_CONF_JSON=/tmp/xxx.json
+#  - AD_BUILD_WORK_ENV_BASH=/tmp/xxx-20170413223843/partitions/p2/work/apply_parts_20170413223843/env.bash
+#  - AD_BUILD_WORK_ENV_JSON=/tmp/xxx-20170413223843/partitions/p2/work/apply_parts_20170413223843/env.json
+#  
+#  - AD_BUILD_WORK_PARTS_DIR=/tmp/xxx-20170413223843/partitions/p2/work/apply_parts_20170413223843/parts
+#  - AD_BUILD_WORK_PARTS_FILE=/tmp/xxx-20170413223843/partitions/p2/work/apply_parts_20170413223843/parts.txt
+#
+#  - AD_BUILD_WORK_DEBIAN_PKG_LIST=/tmp/xxx-20170413223843/partitions/p2/work/apply_parts_20170413223843/package-debian.txt
+#  - AD_BUILD_WORK_PYTHON2_PKG_LIST=/tmp/xxx-20170413223843/partitions/p2/work/apply_parts_20170413223843/package-python2.txt
+#  - AD_BUILD_WORK_PYTHON3_PKG_LIST=/tmp/xxx-20170413223843/partitions/p2/work/apply_parts_20170413223843/package-python3.txt
+#  
+#  - AD_BUILD_WORK_TOPDIR=/tmp/xxx-20170413223843/partitions/p2/work/apply_parts_20170413223843
+#
+#  - AD_CONF_JSON=/tmp/xxx-20170413223843/config.json
+#  - AD_PARTITION_DIR=/tmp/xxx-20170413223843/partitions
+#
+#  - AD_ROOTFS_DIR=/tmp/xxx-20170413223843/partitions/p2
+#  - AD_ROOTFS_METADATA_FILE=/tmp/xxx-20170413223843/rootfs.yaml
+#  - AD_ROOTFS_PARTITION=p2
+#  - AD_ROOTFS_TYPE=bone
+#
+#  - AD_TOPDIR=/tmp/xxx-20170413223843
+#
 # 
 
+function exist_any_file {
+	local DIR=$1
+	[ ! -d "${DIR}" ] && return 1
+	[ "0" == "$(find ${DIR} -type f | wc -l)" ] && return 2
+	return 0
+}
+
+
+function copy_partitions {
+	local THE_PART=$1
+	local THE_PART_DIR=$2
+	[ "" == "${AD_PARTITION_DIR}" ] && ERR "${DBG_PREFIX} => [${THE_PART}] missing variable AD_PARTITION_DIR" && return 1
+	
+	for index in {1..10}; do
+		local SRC_DIR="${THE_PART_DIR}/partitions/p${index}"
+		local DST_DIR="${AD_PARTITION_DIR}/p${index}"
+		local EXIT_CODE="0"
+		exist_any_file ${SRC_DIR}
+		EXIT_CODE=$?
+		if [ "0" != "${EXIT_CODE}" ]; then
+			[ "1" != "${EXIT_CODE}" ] && INFO "${DBG_PREFIX} => [${THE_PART}] ignore ${SRC_DIR} because of ${EXIT_CODE}"
+			continue
+		fi
+		INFO "${DBG_PREFIX} => [${THE_PART}] copying p${index}"
+		mkdir -p ${DST_DIR}
+		rsync -az ${SRC_DIR}/* ${DST_DIR}/
+	done
+}
+
+
+function copy_rootfs {
+	local THE_PART=$1
+	local THE_PART_DIR=$2
+	[ "" == "${AD_ROOTFS_DIR}" ] && ERR "${DBG_PREFIX} => [${THE_PART}] missing variable AD_ROOTFS_DIR" && return 1
+
+	local SRC_DIR="${THE_PART_DIR}/rootfs"
+	local DST_DIR="${AD_ROOTFS_DIR}"
+
+	exist_any_file ${SRC_DIR}
+	local EXIT_CODE=$?
+
+	if [ "0" != "${EXIT_CODE}" ]; then
+		[ "1" != "${EXIT_CODE}" ] && INFO "${DBG_PREFIX} => [${THE_PART}] ignore ${SRC_DIR} because of ${EXIT_CODE}"
+		return 0
+	fi
+
+	INFO "${DBG_PREFIX} => [${THE_PART}] copying rootfs"
+	rsync -az ${SRC_DIR}/* ${DST_DIR}/
+}
+
+
+function copy_service_files {
+	local THE_PART=$1
+	local THE_PART_DIR=$2
+	local GUEST_WORK_PART_SERVICE_DIR=$3
+	local THE_PART_SERVICE_DIR="${THE_PART_DIR}/assets/services"
+
+	local GUEST_HOOK="$(dirname ${BASH_SOURCE[0]})/guest"
+	local SERVICES=($(cat ${GUEST_HOOK} | grep "^function run_service_" | awk '{print $2}' | sed 's/^run_service_//g'))
+
+	for service in "${SERVICES[@]}"; do
+		local SRC_DIR="${THE_PART_SERVICE_DIR}/${service}"
+		local DST_DIR="${AD_ROOTFS_DIR}${GUEST_WORK_PART_SERVICE_DIR}/${service}"
+
+		[ ! -d "${SRC_DIR}" ] && continue
+		local TMP_FILE=$(mktemp /tmp/XXXXXX)
+		find ${SRC_DIR} -mindepth 1 -maxdepth 1 -type f > ${TMP_FILE}
+		if [ "0" == "$(cat ${TMP_FILE} | wc -l)" ]; then
+			INFO "${DBG_PREFIX} => [${THE_PART}] ignore ${SRC_DIR} because of no existing files"
+			rm -f ${TMP_FILE}
+			continue
+		fi
+
+		local FILES=($(cat ${TMP_FILE}))
+		rm -f ${TMP_FILE}
+		mkdir -p ${DST_DIR}
+		for file in "${FILES[@]}"; do
+			INFO "${DBG_PREFIX} => [${THE_PART}] prepare ${service} by copying $(basename ${file}) to ${GUEST_WORK_PART_SERVICE_DIR}/${service}"
+			cp ${file} ${DST_DIR}/
+		done
+	done
+}
+
+
+function foreach_part_dir {
+	local PARTS_LIST_FILE=$1
+	local APPLY_FUNC=$2
+	shift
+	shift
+	local THE_PARTS=($(cat ${PARTS_LIST_FILE}))
+	for part in "${THE_PARTS[@]}"; do
+		local THE_PART_DIR="${AD_BUILD_WORK_PARTS_DIR}/${part}"
+		[ ! -d "${THE_PART_DIR}" ] && continue
+		DBG_PREFIX=$(GRAY ${APPLY_FUNC}) ${APPLY_FUNC} ${part} ${THE_PART_DIR} $@
+	done
+}
+
+
+# Before archive directory is manipulated.
+# 
 function pre_image {
-	INFO "hello"
-	INFO "DIST_CODENAME = ${DIST_CODENAME}"
+	# Nothing to do.
+	#
+	return 0
 }
 
+
+# After copying files to root-fs and partition directories.
+#	- elinux-common/copy_partitions      , rsync `${PART}/partitions/p[0-9]/*` to `${AD_PARTITION_DIR}/p[0-9]`
+#	- elinux-common/copy_rootfs          , rsync `${PART}/rootfs/*` to `${AD_PARTITION_DIR}/${AD_ROOTFS_PARTITION}`
+#	- elinux-common/copy_service_files
+#	    for s of services
+#	        find ${PART_DIR}/assets/services/${s}/*
+#	        copy them to ${AD_BUILD_WORK_TOPDIR}/elinux-common/services/${s}
+#	        maybe in the future, implement copy-with-template
+#
+# Before running script inside rootfs with chroot and qemu (guest script).
+#
 function pre_guest {
-	INFO "hello"
+	[ ! -f "${AD_BUILD_WORK_PARTS_FILE}" ] && ERR "missing part list: ${AD_BUILD_WORK_PARTS_FILE}" && return 1
+	[ "" == "${AD_BUILD_WORK_PARTS_DIR}" ] && ERR "missing AD_BUILD_WORK_PARTS_DIR variable" && return 2
+	[ "" == "${AD_BUILD_WORK_TOPDIR}" ] && ERR "missing AD_BUILD_WORK_TOPDIR variable" && return 3
+	[ "" == "${AD_ROOTFS_DIR}" ] && ERR "missing AD_ROOTFS_DIR variable" && return 4
+
+	local GUEST_WORK_TOPDIR=$(echo ${AD_BUILD_WORK_TOPDIR} | sed "s|^${AD_ROOTFS_DIR}||g")
+	local GUEST_WORK_PART_SERVICE_DIR="${GUEST_WORK_TOPDIR}/${PART_NAME}/services"
+
+	foreach_part_dir ${AD_BUILD_WORK_PARTS_FILE} copy_partitions
+	foreach_part_dir ${AD_BUILD_WORK_PARTS_FILE} copy_rootfs
+	foreach_part_dir ${AD_BUILD_WORK_PARTS_FILE} copy_service_files ${GUEST_WORK_PART_SERVICE_DIR}
 }
 
+
+# After running script inside rootfs with chroot and qemu
+# Before cleanup temporary/cache files in archive directory
+#
 function post_guest {
 	INFO "hello"
 }
 
+
+# After cleanup temporary/cache files in archive directory
+#
 function post_image {
 	INFO "hello"
 }
+

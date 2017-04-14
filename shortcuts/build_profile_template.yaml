@@ -3,8 +3,7 @@
 name: {{PROFILE_NAME}}
 
 parts:
-  - debian-base
-  - ironman
+  - test1
 
 
 envs:
