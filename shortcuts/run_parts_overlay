@@ -31,6 +31,7 @@ function run_my_parts {
 	echo ""
 	bash -c "${CMD}"
 
+	[ "true" == "${AUTO_UMOUNT_OVERLAY}" ] && emb overlay umount ${ARCHIVE_DIR} && return 0
 	echo ""
 	echo ""
 	echo "you can perform following command to umount overlay fs: "
