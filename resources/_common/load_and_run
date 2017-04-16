@@ -18,6 +18,7 @@ function fn_exist {
 
 function run_my_cmd {
 	[ "host" == "${HOST_OR_GUEST}" ] && INFO $(GREEN $@) || INFO $(YELLOW $@)
+	[ "true" == "${DRY_RUN}" ] && return 0
 	if [ "true" == "${NO_TAB}" ]; then
 		$@ 2>&1
 	else
