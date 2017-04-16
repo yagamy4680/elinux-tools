@@ -1,3 +1,5 @@
+#!/bin/bash
+#
 
 ##DOC:	build archive directory with parts
 
@@ -42,7 +44,7 @@ __EOF__
 
 function read_part_list {
 cat <<__EOF__
-elinux-common
+${COMMON_PART_NAME}
 $(cat $1 | jq .parts | jq .[] | sed 's/"//g')
 __EOF__
 }
@@ -134,56 +136,79 @@ chmod +x $1
 }
 
 
+function get_guest_path {
+	echo $1 | sed "s|${AD_ROOTFS_DIR}||g"
+}
+
+
 function run_bash_cmd {
 	INFO "$(PURPLE $@)"
 	$BASH -c "$@"
 }
 
 
-function process_part_script {
-	local PART=$1
-	local PART_WORK_DIR="${AD_BUILD_WORK_PARTS_DIR}/${PART}"
+function run_hook_script {
+	local PART_NAME=$1; shift
+	local TARGET=$1; shift
+	
+	local PART_WORK_DIR="${AD_BUILD_WORK_PARTS_DIR}/${PART_NAME}"
+	local HOOK_FILE="${PART_WORK_DIR}/hooks/${TARGET}"
 
-	local HOST_HOOK_FILE="${PART_WORK_DIR}/hooks/host"
-	local HOST_HOOK_EXISTED="true"
-	local GUEST_HOOK_FILE="${PART_WORK_DIR}/hooks/guest"
-	local GUEST_HOOK_EXISTED="true"
-
-	[ ! -f "${HOST_HOOK_FILE}" ] && HOST_HOOK_EXISTED="false"
-	[ ! -f "${GUEST_HOOK_FILE}" ] && GUEST_HOOK_EXISTED="false"
+	[ ! -f "${HOOK_FILE}" ] && return 0
 
 	local LOADER="${AD_ROOTFS_WORK_ELINUX_TOOLS_DIR}/resources/_common/load_and_run"
+	local EXIT_CODE="0"
 
+	case "${TARGET}" in
+		host)
+			${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART_NAME} ${TARGET} $@
+			EXIT_CODE=$?
+			;;
+		guest)
+			local QEMU_BASH_ENV="${AD_BUILD_WORK_ENV_BASH}.qemu"
+			local QEMU_LOADER_SCRIPT=$(get_guest_path ${LOADER})
+			local QEMU_BASH_ENV_PATH=$(get_guest_path ${QEMU_BASH_ENV})
+			local TMP_FILE=$(mktemp /tmp/XXXXXX)
+
+			# Change path to relative path inside that root directory
+			cat ${AD_BUILD_WORK_ENV_BASH} | sed "s|${AD_ROOTFS_DIR}||g" > ${QEMU_BASH_ENV}
+
+			# Generate script
+			PART=${PART_NAME} LOADER=${QEMU_LOADER_SCRIPT} ENV_BASH=${QEMU_BASH_ENV_PATH} generate_inner_script ${TMP_FILE}
+			INFO "run script with qemu: $(PURPLE $(cat ${TMP_FILE}))"
+
+			# Chroot and run
+			run_bash_cmd "CHROOT_SPECIFIC=${AD_ROOTFS_TYPE} ${CLI_NAME} chroot script ${AD_ROOTFS_DIR} ${TMP_FILE}"
+			EXIT_CODE=$?
+
+			# Clean up
+			RUN_CMD rm -f ${TMP_FILE}
+			RUN_CMD rm -f ${QEMU_BASH_ENV}
+			;;
+		*)
+			INFO "unsupported target: ${TARGET}"
+			EXIT_CODE="1"
+			;;
+	esac
+
+	[ "0" != "${EXIT_CODE}" ] && ERR "run_hook_script ${PART_NAME} ${TARGET} $@, exit with non-zero value: ${EXIT_CODE}"
+	return ${EXIT_CODE}
+}
+
+
+function process_part_scripts {
 	export IGNORE_DEBUG_LOAD_HELPER="true"
+	lamdba_foreach PARTS run_hook_script "host" "pre_image"
+	lamdba_foreach PARTS run_hook_script "host" "pre_guest"
 
-	 "true" == "${HOST_HOOK_EXISTED}" ] && run_bash_cmd "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host pre_image"
-	[ "true" == "${HOST_HOOK_EXISTED}" ] && run_bash_cmd "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host pre_guest"
+	# Use elinux-common/guest/chroot_entry to run the
+	# chroot_entry() functions in other parts, within the
+	# same qemu/chroot context.
+	#
+	run_hook_script ${COMMON_PART_NAME} "guest" "chroot_entry"
 
-	if [ "true" == "${GUEST_HOOK_EXISTED}" ]; then
-		local QEMU_BASH_ENV="${AD_BUILD_WORK_ENV_BASH}.qemu"
-		local QEMU_LOADER_SCRIPT=$(echo ${LOADER} | sed "s|${AD_ROOTFS_DIR}||g")
-		local TMP_FILE=$(mktemp /tmp/XXXXXX)
-
-		# Change path to relative path inside that root directory
-		# 
-		cat ${AD_BUILD_WORK_ENV_BASH} | sed "s|${AD_ROOTFS_DIR}||g" > ${QEMU_BASH_ENV}
-
-		# Generate script
-		#
-		PART=${PART} LOADER=${QEMU_LOADER_SCRIPT} ENV_BASH=$(echo ${QEMU_BASH_ENV} | sed "s|${AD_ROOTFS_DIR}||g") generate_inner_script ${TMP_FILE}
-		INFO "run script with qemu: $(PURPLE $(cat ${TMP_FILE}))"
-
-		# Chroot and run
-		#
-		run_bash_cmd "CHROOT_SPECIFIC=${AD_ROOTFS_TYPE} ${CLI_NAME} chroot script ${AD_ROOTFS_DIR} ${TMP_FILE}"
-
-		RUN_CMD rm -f ${TMP_FILE}
-		RUN_CMD rm -f ${QEMU_BASH_ENV}
-		# ${CLI_NAME} chroot shell ${AD_PARTITION_DIR}/${AD_ROOTFS_PARTITION}
-	fi
-
-	[ "true" == "${HOST_HOOK_EXISTED}" ] && run_bash_cmd "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host post_guest"
-	[ "true" == "${HOST_HOOK_EXISTED}" ] && run_bash_cmd "${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART} host post_image"
+	FOREACH_REVERSE_ORDER=true lamdba_foreach PARTS run_hook_script "host" "post_guest"
+	FOREACH_REVERSE_ORDER=true lamdba_foreach PARTS run_hook_script "host" "post_image"
 
 	unset IGNORE_DEBUG_LOAD_HELPER
 }
@@ -304,6 +329,7 @@ function mycli_command_entry {
 	export TRANSFORM="${CLI_DIR}/tools/transform.js"
 	[ "true" == "${DEBUG_TRANSFORM}" ] && export TRANSFORM="${CLI_DIR}/tools/transform/app.ls"
 
+	export COMMON_PART_NAME="elinux-common"
 	export PARTS=($(read_part_list ${AD_BUILD_CONF_JSON}))
 
 	export AD_ROOTFS_DIR="${AD_PARTITION_DIR}/${AD_ROOTFS_PARTITION}"
@@ -330,13 +356,8 @@ function mycli_command_entry {
 		grep -v "^${AD_ROOTFS_WORK_BASH_UTILS_DIR}" | \
 		grep -v "^${AD_ROOTFS_WORK_ELINUX_TOOLS_DIR}" | \
 		awk '{printf "\t%s\n", $0}'
-	# INFO "${AD_BUILD_WORK_DEBIAN_PKG_LIST} => \n$(cat ${AD_BUILD_WORK_DEBIAN_PKG_LIST})"
-	# INFO "${AD_BUILD_WORK_PYTHON2_PKG_LIST} => \n$(cat ${AD_BUILD_WORK_PYTHON2_PKG_LIST})"
-	# INFO "${AD_BUILD_WORK_PYTHON3_PKG_LIST} => \n$(cat ${AD_BUILD_WORK_PYTHON3_PKG_LIST})"
 
-	for p in "${PARTS[@]}"; do
-		process_part_script $p 	
-	done
+	process_part_scripts
 
 	finalize_parts_dirs
 	finalize_work_dir

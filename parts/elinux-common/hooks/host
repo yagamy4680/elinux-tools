@@ -152,8 +152,7 @@ function foreach_part_dir {
 # Before archive directory is manipulated.
 # 
 function pre_image {
-	# Nothing to do.
-	#
+	INFO "$(LIGHT_GREEN Great World)"
 	return 0
 }
 
@@ -195,6 +194,6 @@ function post_guest {
 # After cleanup temporary/cache files in archive directory
 #
 function post_image {
-	INFO "hello"
+	INFO "$(LIGHT_GREEN Great World ends.)"
 }
 

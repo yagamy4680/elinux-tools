@@ -111,6 +111,10 @@ function run_all_services {
 		INFO "service: ${service}"
 		run_service_${service} ${SERVICE_DIR}
 	done
+
+	for part in "${PARTS[@]}"; do
+		INFO "part: ${part}"
+	done
 }
 
 
