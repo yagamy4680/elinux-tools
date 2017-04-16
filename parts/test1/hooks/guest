@@ -55,6 +55,6 @@
 #  - ELINUX_TOOLS_DIR
 #
 function chroot_entry {
-	INFO "${PART_NAME} => uname -a"
+	run_my_cmd "uname -a"
 	return 0
 }

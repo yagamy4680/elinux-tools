@@ -60,6 +60,7 @@ function check_environment_variables {
 function load_all_files {
 	load_helper_script "${BASH_UTIL_DIR}/verbose"
 	load_helper_script "${BASH_UTIL_DIR}/funcs"
+	load_helper_script "${BASH_UTIL_DIR}/lambda"
 	init_verbose "${PART_NAME}[${LOADER_ACTION}]"
 	load_helper_script ${PART_HOOK_SCRIPT}
 }
