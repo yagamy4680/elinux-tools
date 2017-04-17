@@ -90,6 +90,8 @@ function install_all_packages {
 
 function run_service_useradd {
 	local DIR=$1
+	INFO "run_service_useradd: ${DIR}"
+	ls -al ${DIR}
 	find ${DIR} -type f | awk '{printf "\t%s\n", $0}'
 	return 0
 }
@@ -113,19 +115,62 @@ function run_all_services {
 		local EXIT_CODE=$?
 		[ "0" != "${EXIT_CODE}" ] && ERR "failed to run ${service} service, exit: ${EXIT_CODE}" && return ${EXIT_CODE}
 	done
+	return 0
+}
+
+
+function generate_part_bash_env {
+cat <<__EOF__ > $2
+## Derived from ${ENV_BASH}
+#
+$(cat ${ENV_BASH})
+
+## Merged from ${AD_BUILD_WORK_PARTS_DIR}/$1.env.bash
+#
+$(cat ${AD_BUILD_WORK_PARTS_DIR}/$1.env.bash)
+__EOF__
 }
 
 
 function run_other_chroot_entries {
 	local PARTS=($(cat ${AD_BUILD_WORK_PARTS_FILE}))
+	cat ${ENV_BASH} | awk '{printf "\t%s\n", $0}'
 	for part in "${PARTS[@]}"; do
 		[ "${part}" == "${PART_NAME}" ] && continue
-		local CMD="$0 ${ENV_BASH} ${part} guest chroot_entry"
+		local NEW_ENV_FILE="/tmp/${part}.env.bash"
+		local CMD="$0 ${NEW_ENV_FILE} ${part} guest chroot_entry"
+		generate_part_bash_env ${part} ${NEW_ENV_FILE}
 		INFO "$(YELLOW ${CMD})"
 		ELINUX_COMMON_GUEST_LOADER=${PART_NAME} ${CMD}
 		local EXIT_CODE=$?
+		rm -f ${NEW_ENV_FILE}
 		[ "0" != "${EXIT_CODE}" ] && ERR "failed to run chroot_entry() of ${part}, exit: ${EXIT_CODE}" && return ${EXIT_CODE}
 	done
+	return 0
+}
+
+
+function show_rootfs_sizes {
+	[ "true" == "${DRY_RUN}" ] && return 0
+	local TMP_FILE=$(mktemp /tmp/XXXXXX)
+	du -s -m /* 2>${TMP_FILE} | grep -v "/tmp" | grep -v "/work" | awk '{printf "\t%s\n", $0}'
+	local EXIT_CODE=$?
+	[ "0" == "${EXIT_CODE}" ] && rm -f ${TMP_FILE} && return 0
+	cat ${TMP_FILE}
+	rm -f ${TMP_FILE}
+	return ${EXIT_CODE}
+}
+
+
+function cleanup_package_caches {
+	INFO "before package-cache cleanup"
+	show_rootfs_sizes
+
+	run_my_cmd "apt-get clean -y -q && apt-get autoclean -y -q && find /var/lib/apt -type f | xargs rm -f"
+	run_my_cmd "rm -rf /var/tmp/*"
+
+	INFO "after package-cache cleanup"
+	show_rootfs_sizes
 }
 
 
@@ -167,4 +212,8 @@ function chroot_entry {
 	run_other_chroot_entries || return $?
 
 	# env | sort | grep "^AD_" | awk '{printf "\t%s\n", $0}'
+
+	cleanup_package_caches || return $?
+	INFO "end."
+	return 0
 }

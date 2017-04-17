@@ -35,6 +35,7 @@ export AD_BUILD_WORK_DEBIAN_PKG_LIST="${AD_BUILD_WORK_DEBIAN_PKG_LIST}"
 export AD_BUILD_WORK_PYTHON2_PKG_LIST="${AD_BUILD_WORK_PYTHON2_PKG_LIST}"
 export AD_BUILD_WORK_PYTHON3_PKG_LIST="${AD_BUILD_WORK_PYTHON3_PKG_LIST}"
 export AD_BUILD_WORK_PARTS_FILE="${AD_BUILD_WORK_PARTS_FILE}"
+export AD_BUILD_WORK_PARTS_DIR="${AD_BUILD_WORK_PARTS_DIR}"
 
 export CLI_DIR="${AD_ROOTFS_WORK_CLI_DIR}"
 export BASH_UTIL_DIR="${AD_ROOTFS_WORK_BASH_UTILS_DIR}"
@@ -113,10 +114,15 @@ function process_part_pre {
 	echo "{}" > ${PART_WORK_ENV_JSON_SRC1}
 	echo "{}" > ${PART_WORK_ENV_JSON_SRC2}
 
-	local VALUE="$(cat ${AD_BUILD_CONF_JSON} | jq ".[\"configs\"][\"${PART}\"]")"
-	if [ "null" == "${VALUE}" ] || [ "undefined" == "${VALUE}" ]; then
-		cat ${AD_BUILD_CONF_JSON} | jq ".[\"configs\"][\"${PART}\"]" > ${PART_WORK_ENV_JSON_SRC1}
-	fi
+	local VALUE="$(cat ${AD_BUILD_CONF_JSON} | jq .configs | jq ".[\"${PART}\"]")"
+	case "${VALUE}" in
+		null|undefined)
+			INFO "no .configs.${PART} in ${AD_BUILD_CONF_JSON}"
+			;;
+		*)
+			cat ${AD_BUILD_CONF_JSON} | jq ".[\"configs\"][\"${PART}\"]" > ${PART_WORK_ENV_JSON_SRC1}
+			;;
+	esac
 
 	[ -f "${PART_DEFAULTS_SRC}" ] && RUN_CMD ${TRANSFORM} yaml2json -s ${PART_DEFAULTS_SRC} -o ${PART_WORK_ENV_JSON_SRC2}
 

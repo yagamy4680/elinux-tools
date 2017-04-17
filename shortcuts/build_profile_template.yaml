@@ -22,3 +22,5 @@ configs:
   bluez :
     SOURCE_URL: https://www.kernel.org/pub/linux/bluetooth/bluez-5.36.tar.xz
     INSTALL_GATTTOOL: true
+  test1 :
+    TESTING: "Asia/Tokyo"

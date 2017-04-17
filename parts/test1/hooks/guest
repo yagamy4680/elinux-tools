@@ -56,5 +56,7 @@
 #
 function chroot_entry {
 	run_my_cmd "uname -a"
+	INFO "TEST1_TESTING = ${TEST1_TESTING}"
+	env | sort | grep "^AD_" | awk '{printf "\t%s\n", $0}'
 	return 0
 }
