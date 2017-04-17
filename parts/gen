@@ -1,0 +1,50 @@
+#!/bin/bash
+#
+
+function YELLOW {
+	local COLOR='\033[0;33m'
+	local NC='\033[0m'
+	echo "${COLOR}$@${NC}"
+}
+
+function run_cmd {
+	echo -e "$(YELLOW $@)"
+	$BASH -c "$@"
+}
+
+function generate_part {
+	local CURRENT=$(pwd)
+	cd $(dirname $0)
+	local PART_DIR=$(pwd)
+	cd ${CURRENT}
+
+	local NAME=$1
+	[ -d "${CURRENT}/${NAME}" ] && echo "the ${NAME} part is existed" && exit 1
+
+	local ROOTDIR="."
+	cd ${CURRENT}
+
+	run_cmd "mkdir -p ${ROOTDIR}/${NAME}"
+	run_cmd "cp ${PART_DIR}/elinux-common/config.template.ls ${ROOTDIR}/${NAME}/config.ls"
+	run_cmd "cp ${PART_DIR}/elinux-common/defaults.template.yaml ${ROOTDIR}/${NAME}/defaults.yaml"
+
+	run_cmd "mkdir -p ${ROOTDIR}/${NAME}/assets/services"
+	run_cmd "mkdir -p ${ROOTDIR}/${NAME}/assets/services/useradd"
+	run_cmd "touch ${ROOTDIR}/${NAME}/assets/services/useradd/.gitkeep"
+
+	run_cmd "mkdir -p ${ROOTDIR}/${NAME}/partitions"
+	run_cmd "mkdir -p ${ROOTDIR}/${NAME}/partitions/p1"
+	run_cmd "mkdir -p ${ROOTDIR}/${NAME}/partitions/p2"
+	run_cmd "touch ${ROOTDIR}/${NAME}/partitions/p1/.gitkeep"
+	run_cmd "touch ${ROOTDIR}/${NAME}/partitions/p2/.gitkeep"
+	
+	run_cmd "mkdir -p ${ROOTDIR}/${NAME}/rootfs"
+	run_cmd "mkdir -p ${ROOTDIR}/${NAME}/rootfs/opt"
+	run_cmd "touch ${ROOTDIR}/${NAME}/rootfs/opt/.gitkeep"
+
+	run_cmd "mkdir -p ${ROOTDIR}/${NAME}/hooks"
+	run_cmd "cp ${PART_DIR}/elinux-common/hooks/host.template ${ROOTDIR}/${NAME}/hooks/host"
+	run_cmd "cp ${PART_DIR}/elinux-common/hooks/guest.template ${ROOTDIR}/${NAME}/hooks/guest"
+}
+
+generate_part $@
