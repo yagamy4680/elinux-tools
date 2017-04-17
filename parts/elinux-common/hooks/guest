@@ -110,6 +110,21 @@ function run_all_services {
 		[ ! -d "${SERVICE_DIR}" ] && continue
 		INFO "service: ${service}"
 		run_service_${service} ${SERVICE_DIR}
+		local EXIT_CODE=$?
+		[ "0" != "${EXIT_CODE}" ] && ERR "failed to run ${service} service, exit: ${EXIT_CODE}" && return ${EXIT_CODE}
+	done
+}
+
+
+function run_other_chroot_entries {
+	local PARTS=($(cat ${AD_BUILD_WORK_PARTS_FILE}))
+	for part in "${PARTS[@]}"; do
+		[ "${part}" == "${PART_NAME}" ] && continue
+		local CMD="$0 ${ENV_BASH} ${part} guest chroot_entry"
+		INFO "$(YELLOW ${CMD})"
+		ELINUX_COMMON_GUEST_LOADER=${PART_NAME} ${CMD}
+		local EXIT_CODE=$?
+		[ "0" != "${EXIT_CODE}" ] && ERR "failed to run chroot_entry() of ${part}, exit: ${EXIT_CODE}" && return ${EXIT_CODE}
 	done
 }
 
@@ -147,20 +162,9 @@ function chroot_entry {
 		AD_BUILD_WORK_PARTS_FILE \
 		|| return 1
 
-	install_all_packages || return 1
-	run_all_services
-
-	local PARTS=($(cat ${AD_BUILD_WORK_PARTS_FILE}))
-	for part in "${PARTS[@]}"; do
-		# local MSG="part => ${part}"
-		# [ "${part}" == "${PART_NAME}" ] && MSG="${MSG} (current)"
-		# INFO "${MSG}"
-		# INFO "$0 ${ENV_BASH} ${part} guest chroot_entry"
-		[ "${part}" == "${PART_NAME}" ] && continue
-		local CMD="$0 ${ENV_BASH} ${part} guest chroot_entry"
-		INFO "$(YELLOW ${CMD})"
-		${CMD}
-	done
+	install_all_packages || return $?
+	run_all_services || return $?
+	run_other_chroot_entries || return $?
 
 	# env | sort | grep "^AD_" | awk '{printf "\t%s\n", $0}'
 }

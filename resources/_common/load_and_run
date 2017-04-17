@@ -61,7 +61,11 @@ function load_all_files {
 	load_helper_script "${BASH_UTIL_DIR}/verbose"
 	load_helper_script "${BASH_UTIL_DIR}/funcs"
 	load_helper_script "${BASH_UTIL_DIR}/lambda"
-	init_verbose "${PART_NAME}[${LOADER_ACTION}]"
+	if [ "" != "${ELINUX_COMMON_GUEST_LOADER}" ]; then
+		init_verbose "${ELINUX_COMMON_GUEST_LOADER}[${LOADER_ACTION}::${PART_NAME}]"
+	else
+		init_verbose "${PART_NAME}[${LOADER_ACTION}]"
+	fi
 	load_helper_script ${PART_HOOK_SCRIPT}
 }
 
