@@ -1,0 +1,10 @@
+
+## 
+#
+# You can specify this configuration in the build
+# configuration for apply_parts subcommand, with
+# correct timezone value, e.g.
+#
+#   TIMEZONE: Asia/Taipei
+#
+TIMEZONE: undefined

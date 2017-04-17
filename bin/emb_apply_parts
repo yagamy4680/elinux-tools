@@ -143,6 +143,17 @@ chmod +x $1
 }
 
 
+function generate_bash_env_file {
+cat <<__EOF__ > $2
+$(cat ${AD_BUILD_WORK_ENV_BASH})
+
+## Merged from ${AD_BUILD_WORK_PARTS_DIR}/$1.env.bash
+#
+$(cat ${AD_BUILD_WORK_PARTS_DIR}/$1.env.bash)
+__EOF__
+}
+
+
 function get_guest_path {
 	echo $1 | sed "s|${AD_ROOTFS_DIR}||g"
 }
@@ -159,29 +170,31 @@ function run_hook_script {
 	local TARGET=$1; shift
 	
 	local PART_WORK_DIR="${AD_BUILD_WORK_PARTS_DIR}/${PART_NAME}"
+	local ENV_FILE="${PART_WORK_DIR}.env.all.bash"
 	local HOOK_FILE="${PART_WORK_DIR}/hooks/${TARGET}"
 
 	[ ! -f "${HOOK_FILE}" ] && return 0
+	[ ! -f "${ENV_FILE}" ] && generate_bash_env_file ${PART_NAME} ${ENV_FILE}
 
 	local LOADER="${AD_ROOTFS_WORK_ELINUX_TOOLS_DIR}/resources/_common/load_and_run"
 	local EXIT_CODE="0"
 
 	case "${TARGET}" in
 		host)
-			${LOADER} ${AD_BUILD_WORK_ENV_BASH} ${PART_NAME} ${TARGET} $@
+			${LOADER} ${ENV_FILE} ${PART_NAME} ${TARGET} $@
 			EXIT_CODE=$?
 			;;
 		guest)
-			local QEMU_BASH_ENV="${AD_BUILD_WORK_ENV_BASH}.qemu"
-			local QEMU_LOADER_SCRIPT=$(get_guest_path ${LOADER})
-			local QEMU_BASH_ENV_PATH=$(get_guest_path ${QEMU_BASH_ENV})
+			local QEMU_ENV_FILE="${ENV_FILE}.qemu"
+			local GUEST_ENV_FILE=$(get_guest_path ${QEMU_ENV_FILE})
+			local GUEST_LOADER_SCRIPT=$(get_guest_path ${LOADER})
 			local TMP_FILE=$(mktemp /tmp/XXXXXX)
 
 			# Change path to relative path inside that root directory
-			cat ${AD_BUILD_WORK_ENV_BASH} | sed "s|${AD_ROOTFS_DIR}||g" > ${QEMU_BASH_ENV}
+			cat ${ENV_FILE} | sed "s|${AD_ROOTFS_DIR}||g" > ${QEMU_ENV_FILE}
 
 			# Generate script
-			PART=${PART_NAME} LOADER=${QEMU_LOADER_SCRIPT} ENV_BASH=${QEMU_BASH_ENV_PATH} generate_inner_script ${TMP_FILE}
+			PART=${PART_NAME} LOADER=${GUEST_LOADER_SCRIPT} ENV_BASH=${GUEST_ENV_FILE} generate_inner_script ${TMP_FILE}
 			INFO "run script with qemu: $(PURPLE $(cat ${TMP_FILE}))"
 
 			# Chroot and run
@@ -190,7 +203,7 @@ function run_hook_script {
 
 			# Clean up
 			RUN_CMD rm -f ${TMP_FILE}
-			RUN_CMD rm -f ${QEMU_BASH_ENV}
+			RUN_CMD rm -f ${QEMU_ENV_FILE}
 			;;
 		*)
 			INFO "unsupported target: ${TARGET}"
