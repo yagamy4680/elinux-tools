@@ -1,6 +1,15 @@
 #!/bin/bash
 #
 
+#
+# DRY_RUN, only show command but not runs those commands.
+#
+# AUTO_UMOUNT_OVERLAY, automatically umount overlay filesystem.
+#
+# USE_LOCAL_PACKAGE_CACHE, enable apt-cache setting, please run /shortcuts/run_docker_squid_deb_proxy in separate terminal window first.
+#
+#
+
 function run_my_parts {
 	local NAME=$1
 	local ARCHIVE_IMAGE=$2
@@ -14,7 +23,12 @@ function run_my_parts {
 	local BUILD_JSON="/tmp/${NAME}.json"
 	local CMD=""
 
-	CMD="PROFILE_NAME=${NAME} ${TOP_DIR}/../tools/transform/app.ls yaml2json -s ${TOP_DIR}/build_profile_template.yaml -o ${BUILD_JSON}"
+	local TMP_FILE=$(mktemp /tmp/XXXXXX)
+	cat ${BUILD_PROFILE_TEMPLATE} > ${TMP_FILE}
+	[ "true" == "${USE_LOCAL_PACKAGE_CACHE}" ] && echo "    PACKAGE_CACHE_SERVER: localhost:3128" >> ${TMP_FILE}
+
+
+	CMD="PROFILE_NAME=${NAME} ${TOP_DIR}/../tools/transform/app.ls yaml2json -s ${TMP_FILE} -o ${BUILD_JSON}"
 	echo ${CMD}
 	bash -c "${CMD}"
 	[ "0" != "$?" ] && echo "failed tp convert yaml conf file to json" && exit 3

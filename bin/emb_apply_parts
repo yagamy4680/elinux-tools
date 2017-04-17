@@ -129,7 +129,7 @@ function process_part_pre {
 	RUN_CMD ${TRANSFORM} jsons -o ${PART_WORK_ENV_JSON} ${PART_WORK_ENV_JSON_SRC2} ${PART_WORK_ENV_JSON_SRC1}
 	RUN_CMD ${TRANSFORM} json2env -s ${PART_WORK_ENV_JSON} -o ${PART_WORK_ENV_BASH} -p ${PART}
 
-	cat ${PART_WORK_ENV_BASH} | awk '{printf "\t%s\n", $0}'
+	# cat ${PART_WORK_ENV_BASH} | awk '{printf "\t%s\n", $0}'
 
 	RUN_CMD mount -o bind ${PART_DIR} ${PART_WORK_DIR}
 }

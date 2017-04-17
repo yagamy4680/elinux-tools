@@ -34,7 +34,14 @@
 
 function install_debian_packages {
 	local PKG_FILE=$1
-	NO_TAB="true" run_my_cmd "apt-get update"
+	if [ "undefined" != "${ELINUX_COMMON_PACKAGE_CACHE_SERVER}" ]; then
+		# NO_TAB="true" run_my_cmd "apt-get update" || return $?
+		# NO_TAB="true" run_my_cmd "apt-get install -y squid-deb-proxy-client" || return $?
+		echo "Acquire::http { Proxy \"http://${ELINUX_COMMON_PACKAGE_CACHE_SERVER}\"; };" > /etc/apt/apt.conf.d/99proxy
+		[ -f "/etc/apt/apt.conf.d/99proxy" ] && INFO "/etc/apt/apt.conf.d/99proxy:" && cat /etc/apt/apt.conf.d/99proxy
+	fi
+
+	NO_TAB="true" run_my_cmd "apt-get update" || return $?
 	NO_TAB="true" run_my_cmd "apt-get install -y $(cat ${PKG_FILE} | tr '\n' ' ')"
 }
 
@@ -42,6 +49,7 @@ function install_debian_packages {
 function install_python_packages {
 	local PY_VERSION=$1
 	local PY_PKG_FILE=$2
+	local PY_CACHE_OPTS=""
 	[ ! -f "${PY_PKG_FILE}" ] && return 1
 
 	local TMP_FILE=$(mktemp /tmp/XXXXXX)
@@ -50,11 +58,25 @@ function install_python_packages {
 
 	local PIP="pip"
 	local EASY_INSTALL="easy_install"
+	local CACHE_OPTS=""
 	[ "python3" == "${PY_VERSION}" ] && PIP="pip3" && EASY_INSTALL="easy_install3"
 	
+	# [todo] Add pipy to https://github.com/muccg/docker-squid-deb-proxy
+	# 
+	# Although squid proxy (docker-squid-deb-proxy) is used, its cache list
+	# doesn't have `pypi.python.org` in the list:
+	#
+	#    https://github.com/muccg/docker-squid-deb-proxy/tree/master/etc/squid-deb-proxy/mirror-dstdomain.acl.d
+	# 
+	# So, it's necessary to add pypi.python.org, and rebuild docker image
+	# to run. Then, following cache option can take effect with new docker
+	# image.
+	#
+	[ "undefined" != "${ELINUX_COMMON_PACKAGE_CACHE_SERVER}" ] && CACHE_OPTS="--proxy http://${ELINUX_COMMON_PACKAGE_CACHE_SERVER}"
+	
 	run_my_cmd "${EASY_INSTALL} --version"
-	run_my_cmd "${PIP} install --upgrade setuptools"
-	run_my_cmd "${PIP} install $(cat ${TMP_FILE} | tr '\n' ' ')"
+	NO_TAB="true" run_my_cmd "${PIP} install ${CACHE_OPTS} --upgrade setuptools"
+	NO_TAB="true" run_my_cmd "${PIP} install ${CACHE_OPTS} $(cat ${TMP_FILE} | tr '\n' ' ')"
 	local EXIT_CODE=$?
 	rm -f ${TMP_FILE}
 	return ${EXIT_CODE}
@@ -121,8 +143,16 @@ function run_all_services {
 
 function run_helper_change_timezone {
 	[ "undefined" == "${ELINUX_COMMON_TIMEZONE}" ] && INFO "ignore timezone setting" && return 0
-	run_my_cmd "echo \"${ELINUX_COMMON_TIMEZONE}\" > /etc/timezone" || return $?
-	run_my_cmd "dpkg-reconfigure --frontend noninteractive tzdata" || return $?
+	case "${DIST_NAME}" in
+		ubuntu|debian)
+			run_my_cmd "echo \"${ELINUX_COMMON_TIMEZONE}\" > /etc/timezone" || return $?
+			run_my_cmd "dpkg-reconfigure --frontend noninteractive tzdata" || return $?
+			;;
+		*)
+			ERR "unsupported distribution for changing timezone: ${DIST_NAME}"
+			return 1
+			;;
+	esac
 	return 0
 }
 
@@ -187,8 +217,19 @@ function cleanup_package_caches {
 	INFO "before package-cache cleanup"
 	show_rootfs_sizes
 
-	run_my_cmd "apt-get clean -y -q && apt-get autoclean -y -q && find /var/lib/apt -type f | xargs rm -f"
-	run_my_cmd "rm -rf /var/tmp/*"
+	case "${DIST_NAME}" in
+		ubuntu|debian)
+			[ -f "/etc/apt/apt.conf.d/99proxy" ] && run_my_cmd "rm -f /etc/apt/apt.conf.d/99proxy"
+			run_my_cmd "apt-get clean -y -q"
+			run_my_cmd "apt-get autoclean -y -q"
+			;;
+		*)
+			ERR "unsupported distribution ${DIST_NAME} for cleanup_package_caches"
+			;;
+	esac
+
+	run_my_cmd "find /var/lib/apt -type f | xargs -I{} sh -c \"rm -vf {}\""
+	run_my_cmd "rm -rvf /var/tmp/*"
 
 	INFO "after package-cache cleanup"
 	show_rootfs_sizes
@@ -235,6 +276,8 @@ function chroot_entry {
 		AD_BUILD_WORK_PYTHON3_PKG_LIST \
 		AD_BUILD_WORK_PARTS_FILE \
 		|| return 1
+
+	show_rootfs_sizes
 
 	install_all_packages || return $?
 	run_all_services || return $?

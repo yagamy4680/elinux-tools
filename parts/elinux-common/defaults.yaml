@@ -8,3 +8,13 @@
 #   TIMEZONE: Asia/Taipei
 #
 TIMEZONE: undefined
+
+
+##
+#
+# You can specify the server address with port number
+# such as `localhost:8000`, `192.168.1.10:3128`, as 
+# the proxy server to be used when performing 
+# `apt-get install`.
+#
+PACKAGE_CACHE_SERVER: undefined
