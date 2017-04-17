@@ -3,7 +3,7 @@
 
 NAME="docker-squid-deb-proxy"
 TIME="$(date +%Y%m%d%H%M%S)"
-DIR="/var/lib/${NAME}/${TIME}"
+DIR="/tmp/${NAME}-${TIME}"
 mkdir -p ${DIR}
 echo "using ${DIR} as cache directory"
 
