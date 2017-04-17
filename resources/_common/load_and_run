@@ -78,7 +78,7 @@ function loader_main {
 	shift; shift; shift; shift
 
 	[ "" == "${ENV_BASH}" ] && echo "please specify ENV_BASH as 1st parameter for $BASH_SOURCE" && exit 1
-	[ ! -f "${ENV_BASH}" ] && echo "missing ${ENV_BASH}" && exit 2
+	[ ! -f "${ENV_BASH}" ] && echo "missing ${ENV_BASH} as ENV_BASH" && exit 2
 	[ "" == "${PART_NAME}" ] && echo "please specify the name of PART as 2nd parameter for $BASH_SOURCE" && exit 3
 	[ "" == "${HOST_OR_GUEST}" ] && echo "please specify HOST_OR_GUEST as 3rd parameter for $BASH_SOURCE" && exit 4
 	[ "host" != "${HOST_OR_GUEST}" ] && [ "guest" != "${HOST_OR_GUEST}" ] && echo "3rd parameter for $BASH_SOURCE only allows host or guest, but ${HOST_OR_GUEST}" && exit 5
@@ -86,6 +86,14 @@ function loader_main {
 
 	check_prerequisites
 	load_all_files
+
+	if [ "guest" == "${HOST_OR_GUEST}" ]; then
+		local ENV_PREFIX=$(echo "${PART_NAME}" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+		INFO "environment variables for $(YELLOW ${PART_NAME}): (with prefix ${ENV_PREFIX})"
+		env | sort | grep "^${ENV_PREFIX}" | awk -F'=' '{printf "\t%s:\t%s\n", $1, $2}'
+		# INFO "loader_main::${ENV_BASH}:"
+		# cat ${ENV_BASH} | awk '{printf "\t%s\n", $0}'
+	fi
 
 	fn_exist ${LOADER_ACTION} || return 0
 	${LOADER_ACTION} $@

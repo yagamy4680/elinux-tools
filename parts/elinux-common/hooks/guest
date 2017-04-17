@@ -91,8 +91,8 @@ function install_all_packages {
 function run_service_useradd {
 	local DIR=$1
 	INFO "run_service_useradd: ${DIR}"
-	ls -al ${DIR}
-	find ${DIR} -type f | awk '{printf "\t%s\n", $0}'
+	# ls -al ${DIR}
+	# find ${DIR} -type f | awk '{printf "\t%s\n", $0}'
 	return 0
 }
 
@@ -119,6 +119,27 @@ function run_all_services {
 }
 
 
+function run_helper_change_timezone {
+	[ "undefined" == "${ELINUX_COMMON_TIMEZONE}" ] && INFO "ignore timezone setting" && return 0
+	run_my_cmd "echo \"${ELINUX_COMMON_TIMEZONE}\" > /etc/timezone" || return $?
+	run_my_cmd "dpkg-reconfigure --frontend noninteractive tzdata" || return $?
+	return 0
+}
+
+
+function run_all_helpers {
+	local HELPERS=($(cat ${BASH_SOURCE[0]} | grep "^function run_helper_" | awk '{print $2}' | sed 's/^run_helper_//g'))
+	for helper in "${HELPERS[@]}"; do
+		INFO "helper: ${helper}"
+		run_helper_${helper} $@
+		local EXIT_CODE=$?
+		[ "0" != "${EXIT_CODE}" ] && ERR "failed to run ${helper} helper, exit: ${EXIT_CODE}" && return ${EXIT_CODE}
+	done
+	return 0
+}
+
+
+
 function generate_part_bash_env {
 cat <<__EOF__ > $2
 ## Derived from ${ENV_BASH}
@@ -134,7 +155,7 @@ __EOF__
 
 function run_other_chroot_entries {
 	local PARTS=($(cat ${AD_BUILD_WORK_PARTS_FILE}))
-	cat ${ENV_BASH} | awk '{printf "\t%s\n", $0}'
+	# cat ${ENV_BASH} | awk '{printf "\t%s\n", $0}'
 	for part in "${PARTS[@]}"; do
 		[ "${part}" == "${PART_NAME}" ] && continue
 		local NEW_ENV_FILE="/tmp/${part}.env.bash"
@@ -174,6 +195,14 @@ function cleanup_package_caches {
 }
 
 
+function dump_all_information {
+cat <<__EOF__
+tzdata: $(apt-cache show tzdata | grep Version | head -n1 | awk '{print $2}')
+tz: $(cat /etc/timezone)
+__EOF__
+}
+
+
 #
 # The chroot_entry (guest script) running inside qemu with chroot,
 # is invoked after following services are performed:
@@ -209,9 +238,12 @@ function chroot_entry {
 
 	install_all_packages || return $?
 	run_all_services || return $?
+	run_all_helpers || return $?
+
 	run_other_chroot_entries || return $?
 
-	# env | sort | grep "^AD_" | awk '{printf "\t%s\n", $0}'
+	INFO "dump_all_information:"
+	dump_all_information | tee /tmp/aaa.yaml | awk '{printf "\t%s\n", $0}'
 
 	cleanup_package_caches || return $?
 	INFO "end."

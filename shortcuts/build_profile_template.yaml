@@ -17,7 +17,7 @@ envs:
 
 
 configs:
-  debian-base :
+  elinux-common :
     TIMEZONE: Asia/Taipei
   bluez :
     SOURCE_URL: https://www.kernel.org/pub/linux/bluetooth/bluez-5.36.tar.xz
