@@ -38,3 +38,8 @@ apt-get install -y squashfs-tools pxz
 
 Conclusion: `.sqfs.xz` is better, because it allows random access, and almost no speed lost when copying all files under sqfs (when it is mounted at lower layer of overlayfs). It is also good for network transmission after compression.
 
+
+
+## Similar Tools
+
+- [linuxkit](https://github.com/linuxkit/linuxkit)
