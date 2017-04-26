@@ -31,13 +31,17 @@
 #
 # 
 
+function cat_no_comments {
+	cat $1 | grep -v "^#" | grep -v "^$"
+}
+
 
 function generate_package_list {
 cat <<__EOF__ > $2
 $(cat $1)
 $([ "undefined" == "${ELINUX_COMMON_TIMEZONE}" ] || echo tzdata)
-$([ -f "${AD_BUILD_WORK_PYTHON2_PKG_LIST}" ] && [ "0" != "$(cat ${AD_BUILD_WORK_PYTHON2_PKG_LIST}) | wc -l)" ] && echo python-pip)
-$([ -f "${AD_BUILD_WORK_PYTHON3_PKG_LIST}" ] && [ "0" != "$(cat ${AD_BUILD_WORK_PYTHON3_PKG_LIST}) | wc -l)" ] && echo python3-pip)
+$([ -f "${AD_BUILD_WORK_PYTHON2_PKG_LIST}" ] && [ "0" != "$(cat_no_comments ${AD_BUILD_WORK_PYTHON2_PKG_LIST} | wc -l)" ] && echo python-pip)
+$([ -f "${AD_BUILD_WORK_PYTHON3_PKG_LIST}" ] && [ "0" != "$(cat_no_comments ${AD_BUILD_WORK_PYTHON3_PKG_LIST} | wc -l)" ] && echo python3-pip)
 __EOF__
 }
 
@@ -45,6 +49,10 @@ __EOF__
 
 function install_debian_packages {
 	local PKG_FILE=$1
+	if [ "0" == "$(cat_no_comments ${PKG_FILE} | wc -l)" ]; then
+		INFO "no need to update debian/ubuntu packages"
+		return 0
+	fi
 	if [ "undefined" != "${ELINUX_COMMON_PACKAGE_CACHE_SERVER}" ]; then
 		# NO_TAB="true" run_my_cmd "apt-get update" || return $?
 		# NO_TAB="true" run_my_cmd "apt-get install -y squid-deb-proxy-client" || return $?
@@ -53,7 +61,7 @@ function install_debian_packages {
 	fi
 
 	NO_TAB="true" run_my_cmd "apt-get update" || return $?
-	NO_TAB="true" run_my_cmd "apt-get install -y $(cat ${PKG_FILE} | grep -v "^#" | grep -v "^$" | tr '\n' ' ')"
+	NO_TAB="true" run_my_cmd "apt-get install -y $(cat_no_comments ${PKG_FILE} | tr '\n' ' ')"
 }
 
 
@@ -64,8 +72,8 @@ function install_python_packages {
 	[ ! -f "${PY_PKG_FILE}" ] && return 1
 
 	local TMP_FILE=$(mktemp /tmp/XXXXXX)
-	cat ${PY_PKG_FILE} | grep -v "^#" | grep -v "^$" > ${TMP_FILE}
-	[ "0" == "$(cat ${TMP_FILE} | wc -l)" ] && rm -f ${TMP_FILE} && return 2
+	cat_no_comments	${PY_PKG_FILE} > ${TMP_FILE}
+	[ "0" == "$(cat ${TMP_FILE} | wc -l)" ] && rm -f ${TMP_FILE} && INFO "no need to install ${PY_VERSION} packages" && return 0
 
 	local PIP="pip"
 	local EASY_INSTALL="easy_install"
