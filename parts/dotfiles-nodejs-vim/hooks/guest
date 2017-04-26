@@ -55,5 +55,5 @@
 #  - ELINUX_TOOLS_DIR
 #
 function chroot_entry {
-	cd /opt/dotfiles && ./bootstrap
+	cd /opt/dotfiles && FORCE_ROOT_USER_IN_QEMU=true ./bootstrap
 }
