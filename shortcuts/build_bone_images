@@ -1,0 +1,137 @@
+#!/bin/bash
+#
+
+function initiate_variables {
+	export CURRENT=$(pwd)
+	cd $(dirname $0)
+	cd ..
+	export REPO_NAME=$(basename $(pwd))
+	export REPO_DIR=$(pwd)
+	export CACHE_DIR="/var/lib/${REPO_NAME}"
+	cd ${CURRENT}
+
+	source ${REPO_DIR}/externals/bash-utils/verbose
+	source ${REPO_DIR}/externals/bash-utils/funcs
+	init_verbose $(basename ${BASH_SOURCE[0]})
+
+	[ "" == "${ROUND}" ] && export ROUND="1"
+	[ "" == "${OUTPUT_DIR}" ] && export OUTPUT_DIR="/tmp"
+	[ "" == "${DOWNLOAD_URL}" ] && export DOWNLOAD_URL="https://archives.t2t.io/embedded-linux/os/beaglebone/mirrors/elinux.org/bb-green/bone-ubuntu-14.04.3-console-armhf-2016-02-11-2gb.img.xz"
+	[ "" == "${IMAGE_PREFIX}" ] && export IMAGE_PREFIX="bone-trusty-20160211"
+
+	# E.g. bone-trusty-20160211-oss-r1
+	# 
+	export IMAGE_NAME="${IMAGE_PREFIX}-oss-r${ROUND}"
+
+	mkdir -p ${CACHE_DIR}
+	mkdir -p ${OUTPUT_DIR}
+}
+
+
+# Given the URL to download archive image, and then produce
+# bone-trusty-20160211-oss-r[ROUND]-c0 image.
+#
+function build_image_0 {
+	local FILENAME=$(basename ${DOWNLOAD_URL})
+	local DOWNLOAD_FILE="${CACHE_DIR}/${FILENAME}"
+	local NAME=${FILENAME}
+	NAME=${NAME%.*}
+	local DEVICE_IMAGE_FILE="${CACHE_DIR}/${NAME}"
+	NAME=${NAME%.*}
+	local OUTPUT_IMAGE=$1
+	local INPUT_IMAGE=$2
+	local ARCHIVE_DIR="/tmp/${NAME}-$(date '+%Y%m%d%H%M%S')"
+
+	[ -f "${OUTPUT_IMAGE}" ] && INFO "skip because of ${OUTPUT_IMAGE}" && return 0
+
+	rm -rf ${ARCHIVE_DIR}
+
+	if [ ! -f "${DOWNLOAD_FILE}" ]; then
+		RUN_CMD_STREAMING "wget -O ${DOWNLOAD_FILE} ${DOWNLOAD_URL}"
+		[ "0" != "$?" ] && ERR "failed to download ${DOWNLOAD_URL}" && return 1
+	fi
+
+	if [ ! -f "${DEVICE_IMAGE_FILE}" ]; then
+		RUN_CMD "unxz -k ${ARCHIVE_FILE}"
+		[ "0" != "$?" ] && ERR "failed to uncompress ${ARCHIVE_FILE}" && return 2
+	fi
+
+	[ ! -f "${DEVICE_IMAGE_FILE}" ] && ERR "still missing ${DEVICE_IMAGE_FILE}" && return 3
+
+	export DUMP_AM335X_UBOOT_FROM_MBR=true
+	echo "start composing ..." && \
+		emb di2ad ${DEVICE_IMAGE_FILE} ${ARCHIVE_DIR} && \
+		emb convert_ad ${ARCHIVE_DIR} bb1to2 && \
+		emb ad2ai ${ARCHIVE_DIR} ${OUTPUT_IMAGE}
+	
+	return $?
+}
+
+
+function build_overlay_image {
+	local OUTPUT_FILE=$1
+	local INPUT_FILE=$2
+	local CONFIG_SOURCE_FILE="${CURRENT}/bone_trusty_c${POSTFIX}.yaml"
+	local CONFIG_JSON_FILE="/tmp/$(basename ${CONFIG_SOURCE_FILE}).json"
+
+	[ -f "${OUTPUT_FILE}" ] && INFO "skip because of ${OUTPUT_FILE}" && return 0
+	[ "" == "$(netstat -lnt | grep ':3128')" ] && ERR "please setup debian squid proxy, e.g. ./run_docker_squid_deb_proxy" && return 1
+
+	local EXIT_CODE="0"
+	local TMP1=$(mktemp /tmp/XXXXXX)
+	local TMP2=$(mktemp /tmp/XXXXXX)
+
+	cat ${CONFIG_SOURCE_FILE} | sed "s/PROFILE_NAME/${IMAGE_NAME}/g" > ${TMP1} && \
+		${REPO_DIR}/tools/transform/app.ls yaml2json -s ${TMP1} -o ${TMP2} && \
+		cat ${TMP2} | jq ".configs[\"elinux-common\"].PACKAGE_CACHE_SERVER=\"localhost:3128\"" > ${CONFIG_JSON_FILE}
+	EXIT_CODE=$?
+	rm -f ${TMP1}
+	rm -f ${TMP2}
+	[ "0" != "${EXIT_CODE}" ] && ERR "failed to generate ${CONFIG_JSON_FILE}" && return 2
+	
+	cat ${CONFIG_JSON_FILE} | jq .
+	[ "0" != "$?" ] && ERR "invalid json file: ${CONFIG_JSON_FILE}" && return 3
+
+	local DIR="/tmp/${IMAGE_NAME}-$(date '+%Y%m%d%H%M%S')"
+	emb overlay mount ${DIR} ${INPUT_FILE}
+	[ "0" != "$?" ] && ERR "failed to mount overlay fs with ${INPUT_FILE}" && return 3
+
+	emb apply_parts ${DIR} ${CONFIG_JSON_FILE}
+	EXIT_CODE=$?
+
+	if [ "0" != "${EXIT_CODE}" ]; then
+		emb overlay umount ${DIR}
+		return 4
+	fi
+	
+	emb ad2ai ${DIR} ${OUTPUT_FILE}
+	EXIT_CODE=$?
+	emb overlay umount ${DIR}
+	return ${EXIT_CODE}
+}
+
+
+function build_image_1 {
+	build_overlay_image $@
+}
+
+function build_image_2 {
+	build_overlay_image $@
+}
+
+function build_all_images {
+	local FUNCS=($(cat ${BASH_SOURCE[0]} | grep "^function build_image_" | awk '{print $2}' | sort))
+	for f in "${FUNCS[@]}"; do
+		local POSTFIX=$(echo ${f} | awk -F'_' '{print $3}')
+		local LAST=$((POSTFIX-1))
+		local INPUT_FILE="${OUTPUT_DIR}/${IMAGE_NAME}-c${LAST}.sqfs"
+		local OUTPUT_FILE="${OUTPUT_DIR}/${IMAGE_NAME}-c${POSTFIX}.sqfs"
+		[ "0" == "${POSTFIX}" ] && INPUT_FILE="n/a"
+		POSTFIX=${POSTFIX} $f ${OUTPUT_FILE} ${INPUT_FILE}
+		local EXIT_CODE=$?
+		[ "0" != "${EXIT_CODE}" ] && exit ${EXIT_CODE}
+	done
+}
+
+initiate_variables
+build_all_images $@

@@ -1,0 +1,17 @@
+## Template for Build profile.
+#
+name: PROFILE_NAME
+
+parts:
+    - dotfiles-nodejs-vim
+
+
+envs:
+    # Possible values: `bone`, `raspbian`
+    #
+    board_dist_codename: bone
+
+
+configs:
+    oss-base:
+        TEST: false
