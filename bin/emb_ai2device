@@ -21,7 +21,8 @@ cat <<__EOF__
 ${CLI_NAME} ${CLI_ACTION} ARCHIVE_IMAGE DEVICE
 
 For example:
-	${CLI_NAME} ${CLI_ACTION} $(GREEN "/tmp/bb-14.04.3.sxz" "/dev/sdb")
+	${CLI_NAME} ${CLI_ACTION} $(GREEN "/tmp/bb-14.04.3.sxz"  "/dev/sdb")
+	${CLI_NAME} ${CLI_ACTION} $(GREEN "/tmp/bb-14.04.3.sqfs" "/dev/sdb")
 __EOF__
 }
 

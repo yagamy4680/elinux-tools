@@ -90,7 +90,7 @@ function loader_main {
 	if [ "guest" == "${HOST_OR_GUEST}" ]; then
 		local ENV_PREFIX=$(echo "${PART_NAME}" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
 		INFO "environment variables for $(YELLOW ${PART_NAME}): (with prefix ${ENV_PREFIX})"
-		env | sort | grep "^${ENV_PREFIX}" | awk -F'=' '{printf "\t%s:\t%s\n", $1, $2}'
+		env | sort | grep "^${ENV_PREFIX}"
 		# INFO "loader_main::${ENV_BASH}:"
 		# cat ${ENV_BASH} | awk '{printf "\t%s\n", $0}'
 	fi
