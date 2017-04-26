@@ -123,6 +123,10 @@ function build_image_3 {
 	build_overlay_image $@
 }
 
+function build_image_4 {
+	build_overlay_image $@
+}
+
 function build_all_images {
 	local FUNCS=($(cat ${BASH_SOURCE[0]} | grep "^function build_image_" | awk '{print $2}' | sort))
 	for f in "${FUNCS[@]}"; do
