@@ -27,8 +27,6 @@ dependencies:
 		* <[
 			build-essential
 			cmake
-			python-pip
-			python3-pip
 		]>
 
 		# Utilities
