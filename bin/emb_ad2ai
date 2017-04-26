@@ -51,13 +51,21 @@ function mycli_command_entry {
 			SQFS_FILE=$(echo ${ARCHIVE_IMAGE} | tr '.' '\n' | sed '$ d' | tr '\n' '.' | sed 's/\.$//g')
 			[ "xz" == "${ARCHIVE_EXT}" ] && ALGORITHM="xz" && COMPRESSOR="pxz"
 			;;
+		sqfs)
+			ALGORITHM=""
+			SQFS_FILE=""
+			;;
 		*)
 			ERR "unsupported format: ${ARCHIVE_IMAGE}" && exit 2
 			;;
 	esac
 
 	if [ "" == "${SQFS_FILE}" ]; then
-		local CMD="mksquashfs ${ARCHIVE_DIR} ${ARCHIVE_IMAGE} -comp ${ALGORITHM} -noI -no-duplicates -progress"
+		if [ "" == "${ALGORITHM}" ]; then
+			ALGORITHM="gzip"
+			EXTRA_OPTS="-noD -noF -noX"
+		fi
+		local CMD="mksquashfs ${ARCHIVE_DIR} ${ARCHIVE_IMAGE} -comp ${ALGORITHM} -noI ${EXTRA_OPTS} -no-duplicates -progress"
 		INFO "$(PURPLE ${CMD})" && ${CMD}
 	else
 		local CMD="mksquashfs ${ARCHIVE_DIR} ${SQFS_FILE} -comp ${ALGORITHM} -noI -noD -noF -noX -no-duplicates -progress"
