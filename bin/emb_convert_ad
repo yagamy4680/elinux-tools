@@ -15,8 +15,8 @@ cat <<__EOF__
 ${CLI_NAME} ${CLI_ACTION} [ARCHIVE DIRECTORY] [ACTION]
 
 For example:
-	${CLI_NAME} ${CLI_ACTION} $(GREEN "/tmp/bb-14.04.3" "bb1to2")
-	${CLI_NAME} ${CLI_ACTION} $(GREEN "/tmp/bb-14.04.3" "rpb2a")
+	${CLI_NAME} ${CLI_ACTION} $(GREEN "/tmp/bb-14.04.3" "bb1to2") [KERNEL DIRECTORY]
+	${CLI_NAME} ${CLI_ACTION} $(GREEN "/tmp/bb-14.04.3" "rpb2a") [KERNEL DIRECTORY]
 
 	$(YELLOW bb1to2):
 		Convert Beaglebone 1 partition (bootloader in MBR) to 2 partition 
@@ -24,6 +24,10 @@ For example:
 		rootfs.
 	$(YELLOW rpb2a):
 		Process Raspbian Lite image for further process.
+
+	The last parameter KERNEL DIRECTORY is optional. When it is specified, 
+	the script shall copy kernel, driver modules, and dtb/firmware files
+	from the given ARCHIVE DIRECTORY to KERNEL DIRECTORY.
 __EOF__
 }
 
@@ -51,6 +55,7 @@ function generate_rootfs_metadata {
 
 function cad_rpb2a {
 	local BOARD_DIST_CODENAME=$1
+	local KERNEL_DIR=$2
 	local ARCHIVE_PARTITION_DIR="${ARCHIVE_DIR}/partitions"
 	local ARCHIVE_VERBOSE_DIR="${ARCHIVE_DIR}/.verbose"
 	local ARCHIVE_OPT_DIR="${ARCHIVE_DIR}/opts"
@@ -111,6 +116,27 @@ function cad_bb1to2 {
 	local RESOURCE_DIR="${CLI_RESOURCE_DIR}/${CLI_ACTION}"
 	local CURRENT=$(pwd)
 
+	if [ "" != "${KERNEL_DIR}" ]; then
+		local PARTITION1="${ARCHIVE_PARTITION_DIR}/p1"
+		local FULL_VERSION_NAME=$(cat ${PARTITION1}/boot/uEnv.txt | grep "^uname_r" | awk -F'=' '{print $2}')
+		local KERNEL_VERSION=$(echo ${FULL_VERSION_NAME} | awk -F'-' '{print $1}')
+		local KERNEL_LOCALVERSION=$(echo ${FULL_VERSION_NAME} | awk -F'-' '{$1=""; print $0}' | tr ' ' '-')
+		RUN_CMD rm -rf ${KERNEL_DIR}
+		RUN_CMD mkdir -p ${KERNEL_DIR}/boot/dtbs
+		RUN_CMD mkdir -p ${KERNEL_DIR}/lib/modules
+		RUN_CMD mkdir -p ${KERNEL_DIR}/usr/src
+		RUN_CMD cp -f ${PARTITION1}/boot/*-${KERNEL_VERSION}${KERNEL_LOCALVERSION} ${KERNEL_DIR}/boot
+		RUN_CMD cp -R ${PARTITION1}/boot/dtbs/${KERNEL_VERSION}${KERNEL_LOCALVERSION} ${KERNEL_DIR}/boot/dtbs
+		RUN_CMD cp -R ${PARTITION1}/lib/modules/${KERNEL_VERSION}${KERNEL_LOCALVERSION} ${KERNEL_DIR}/lib/modules
+		RUN_CMD cp -R ${PARTITION1}/usr/src/linux-headers-${KERNEL_VERSION}${KERNEL_LOCALVERSION} ${KERNEL_DIR}/usr/src
+		RUN_CMD cp -R ${PARTITION1}/lib/firmware ${KERNEL_DIR}/lib/firmware-${KERNEL_VERSION}${KERNEL_LOCALVERSION}
+		RUN_CMD cd ${KERNEL_DIR}/lib
+		RUN_CMD ln -s firmware-${KERNEL_VERSION}${KERNEL_LOCALVERSION} firmware
+		RUN_CMD cd ${CURRENT}
+		echo "version=${KERNEL_VERSION}" >> ${KERNEL_DIR}/version.txt
+		echo "localversion=${KERNEL_LOCALVERSION}" >> ${KERNEL_DIR}/version.txt
+	fi		
+
 	RUN_CMD cp ${ARCHIVE_CONFIG_JSON} ${ARCHIVE_CONFIG_JSON_BAK}
 	cat ${ARCHIVE_CONFIG_JSON_BAK} | \
 		jq ".opts.DUMP_AM335X_UBOOT_FROM_MBR = false" | \
@@ -159,6 +185,7 @@ function cad_bb1to2 {
 function mycli_command_entry {
 	export ARCHIVE_DIR=$1
 	local CONVERSION_PROCEDURE=$2
+	local KERNEL_DIR=$3
 	[ "" == "${ARCHIVE_DIR}" ] && ERR "please specify archive directory" && exit 1
 	[ ! -d "${ARCHIVE_DIR}" ] && ERR "missing archive directory: ${ARCHIVE_DIR}" && exit 2
 	shift
@@ -166,10 +193,10 @@ function mycli_command_entry {
 
 	case "${CONVERSION_PROCEDURE}" in
 		bb1to2)
-			cad_${CONVERSION_PROCEDURE} "bone"
+			cad_${CONVERSION_PROCEDURE} "bone" ${KERNEL_DIR}
 			;;
 		rpb2a)
-			cad_${CONVERSION_PROCEDURE} "raspbian"
+			cad_${CONVERSION_PROCEDURE} "raspbian" ${KERNEL_DIR}
 			;;
 		"")
 			ERR "missing conversion procedure..."
