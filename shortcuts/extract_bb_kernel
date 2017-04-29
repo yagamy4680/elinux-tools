@@ -50,7 +50,7 @@ function extract_kernel {
 		emb di2ad ${DEVICE_IMAGE_FILE} ${ARCHIVE_DIR} && \
 		emb convert_ad ${ARCHIVE_DIR} bb1to2 ${KERNEL_DIR} && \
 		cd ${KERNEL_DIR} && \
-		tar cvzf /tmp/${NAME}-kernel-$(read_config ${KERNEL_DIR}/version.txt version)$(read_config ${KERNEL_DIR}/version.txt localversion).tar.gz .
+		tar cvzf /tmp/${NAME}-kernel-$(read_config ${KERNEL_DIR}/kernel-version.txt version)$(read_config ${KERNEL_DIR}/kernel-version.txt localversion).tar.gz .
 }
 
 extract_kernel $@

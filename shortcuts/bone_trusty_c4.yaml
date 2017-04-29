@@ -3,7 +3,7 @@
 name: PROFILE_NAME
 
 parts:
-    - test2
+    - patch-kernel
 
 
 envs:
@@ -15,3 +15,7 @@ envs:
 configs:
     oss-base:
         TEST: false
+
+    patch-kernel:
+        URL: https://archives.t2t.io/embedded-linux/os/beaglebone/kernels/bone-ubuntu-16.04.2-console-armhf-2017-04-07-2gb-kernel-4.4.59-ti-r96.tar.gz
+        CACHE_DIR: /tmp

@@ -133,8 +133,8 @@ function cad_bb1to2 {
 		RUN_CMD cd ${KERNEL_DIR}/lib
 		RUN_CMD ln -s firmware-${KERNEL_VERSION}${KERNEL_LOCALVERSION} firmware
 		RUN_CMD cd ${CURRENT}
-		echo "version=${KERNEL_VERSION}" >> ${KERNEL_DIR}/version.txt
-		echo "localversion=${KERNEL_LOCALVERSION}" >> ${KERNEL_DIR}/version.txt
+		echo "version=${KERNEL_VERSION}"           >> ${KERNEL_DIR}/kernel-version.txt
+		echo "localversion=${KERNEL_LOCALVERSION}" >> ${KERNEL_DIR}/kernel-version.txt
 	fi		
 
 	RUN_CMD cp ${ARCHIVE_CONFIG_JSON} ${ARCHIVE_CONFIG_JSON_BAK}

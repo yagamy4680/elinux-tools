@@ -1,0 +1,43 @@
+# The URL to download the kernel patch archive. E.g.
+#     https://archives.t2t.io/embedded-linux/os/beaglebone/kernels/bone-ubuntu-16.04.2-console-armhf-2017-04-07-2gb-kernel-4.4.59-ti-r96.tar.gz
+#
+#
+# The kernel patch archive shall have following directory structure
+#
+# /version.txt
+# /boot
+#   /System.map-[VERSION][LOCALVERSION]
+#   /vmlinuz-[VERSION][LOCALVERSION]
+#   /dtbs
+#     /[VERSION][LOCALVERSION]
+#       /*.dtb
+# /lib
+#   /firmware
+#   /firmware-[VERSION][LOCALVERSION]
+#   /modules
+#     /[VERSION][LOCALVERSION]
+# /usr
+#   /src
+#     /linux-headers-[VERSION][LOCALVERSION]
+#
+# The possible values for VERSION: 3.14.43, 4.4.19, 4.4.9
+# The possible values for LOCALVERSION: -ipcs3-dhvac-r1, -ipcs3-conscious-r1, -ti-r25
+#
+URL: ""
+
+
+# The cache directory to store the downloaded kernel patch archive.
+# If the target kernel patch archive is already existed in the 
+# cache directory, no need to download again.
+#
+CACHE_DIR: /tmp
+
+
+# The user name to download kernel patch archive, for HTTP Basic Authentication.
+#
+USERNAME: ""
+
+
+# The password to download kernel patch archive, for HTTP Basic Authentication.
+#
+PASSWORD: ""
