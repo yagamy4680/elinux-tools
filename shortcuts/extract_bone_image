@@ -1,0 +1,86 @@
+#!/bin/bash
+
+function read_config {
+	cat $1 | grep "^$2" | awk -F'=' '{print $2}'
+}
+
+function extract_kernel_and_image {
+	local CURRENT=$(pwd)
+	cd $(dirname $0)
+	cd ..
+	local REPO_NAME=$(basename $(pwd))
+	local CACHE_DIR="/var/lib/${REPO_NAME}"
+	local URL=$1
+	[ "" == "${URL}" ] && URL="https://archives.t2t.io/embedded-linux/os/beaglebone/mirrors/elinux.org/bb-green/bone-ubuntu-14.04.3-console-armhf-2016-02-11-2gb.img.xz"
+	cd ${CURRENT}
+
+	mkdir -p ${CACHE_DIR}
+	echo "using ${URL}"
+	echo "local cache: ${CACHE_DIR}"
+
+	local FILE=$(basename ${URL})
+	local DOWNLOAD_FILE="${CACHE_DIR}/${FILE}"
+	local NAME=${FILE}
+	NAME=${NAME%.*}
+	local DEVICE_IMAGE_FILE="${CACHE_DIR}/${NAME}"
+	NAME=${NAME%.*}
+	local ARCHIVE_DIR="/tmp/${NAME}-$(date '+%Y%m%d%H%M%S')"
+	local ARCHIVE_IMAGE="/tmp/${NAME}.sqfs.xz"
+	local KERNEL_DIR="/tmp/kernel"
+	local KERNEL_PATCH_ARCHIVE="/tmp/${NAME}-kernel-"
+
+	echo "archive-dir: ${ARCHIVE_DIR}"
+
+	rm -rf ${ARCHIVE_DIR}
+
+	if [ ! -f "${DOWNLOAD_FILE}" ]; then
+		echo "wget -O ${DOWNLOAD_FILE} ${URL}"
+		wget -O ${DOWNLOAD_FILE} ${URL}
+		[ "0" != "$?" ] && echo "failed to download ${URL}" && exit 1
+	fi
+
+	if [ ! -f "${DEVICE_IMAGE_FILE}" ]; then
+		unxz -k ${DOWNLOAD_FILE}
+		[ "0" != "$?" ] && echo "failed to uncompress ${DOWNLOAD_FILE}" && exit 2
+	fi
+
+	[ ! -f "${DEVICE_IMAGE_FILE}" ] && echo "still missing ${DEVICE_IMAGE_FILE}" && exit 3
+
+	echo "convert device-image (di) to archive-directory (ad)"
+	DUMP_AM335X_UBOOT_FROM_MBR=true \
+		emb di2ad ${DEVICE_IMAGE_FILE} ${ARCHIVE_DIR}
+	[ "0" != "$?" ] && echo "failed to convert ${DEVICE_IMAGE_FILE} to archive directory" && return 4
+
+	echo "produce raw archive-image"
+	rm -f /tmp/${NAME}-raw.sqfs
+	emb ad2ai ${ARCHIVE_DIR} /tmp/${NAME}-raw.sqfs
+	[ "0" != "$?" ] && echo "failed to produce ${NAME}-raw.sqfs" && return 5
+
+	echo "convert_ad"
+	emb convert_ad ${ARCHIVE_DIR} bb1to2 ${KERNEL_DIR}
+	[ "0" != "$?" ] && echo "failed to convert ${ARCHIVE_DIR} with bb1to2 transformation" && return 6
+	
+	echo "produce opt archive-image"
+	rm -f /tmp/${NAME}-opt.sqfs
+	emb ad2ai ${ARCHIVE_DIR} /tmp/${NAME}-opt.sqfs
+	[ "0" != "$?" ] && echo "failed to produce ${NAME}-opt.sqfs" && return 6
+
+	local VERSION=$(read_config ${KERNEL_DIR}/version.txt version)
+	local LOCALVERSION=$(read_config ${KERNEL_DIR}/version.txt localversion)
+	local KERNEL_PATCH_ARCHIVE="/tmp/${NAME}-kernel-${VERSION}${LOCALVERSION}.tar"
+	echo "produce kernel patch archive"
+	rm -f ${KERNEL_PATCH_ARCHIVE}
+	cd ${KERNEL_DIR} && tar cf ${KERNEL_PATCH_ARCHIVE} .
+	[ "0" != "$?" ] && echo "failed to produce kernel archive ${KERNEL_PATCH_ARCHIVE}" && return 7
+
+	if [ "true" == "${COMPRESS_ALL}" ]; then
+		local FILES=($(find /tmp -maxdepth 1 -type f -name "${NAME}*" | grep -v "\.xz$"))
+		for f in "${FILES[@]}"; do
+			echo "compressing $f ..."
+			pxz -v -v -k ${f}
+		done
+	fi
+	echo "done."
+}
+
+extract_kernel_and_image $@
