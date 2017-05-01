@@ -9,6 +9,7 @@ losetup
 blkid
 lsc
 jq
+pv
 __EOF__
 }
 
