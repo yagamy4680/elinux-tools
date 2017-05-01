@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-##DOC:	produce archive image (*.sxz) from archive directory with mksquashfs
+##DOC:	produce archive image (*.sxz, *.sqfs.xz) from archive directory with mksquashfs
 
 function mycli_command_prerequisites {
 cat <<__EOF__

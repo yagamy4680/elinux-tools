@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-##DOC:	flash an archive image (*.sxz) to a block device (e.g. /dev/sdb)
+##DOC:	flash an archive image (*.sxz, *.sqfs) to a block device (e.g. /dev/sdb)
 
 function mycli_command_prerequisites {
 cat <<__EOF__
