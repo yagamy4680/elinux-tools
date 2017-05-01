@@ -65,8 +65,8 @@ function extract_kernel_and_image {
 	emb ad2ai ${ARCHIVE_DIR} /tmp/${NAME}-opt.sqfs
 	[ "0" != "$?" ] && echo "failed to produce ${NAME}-opt.sqfs" && return 6
 
-	local VERSION=$(read_config ${KERNEL_DIR}/version.txt version)
-	local LOCALVERSION=$(read_config ${KERNEL_DIR}/version.txt localversion)
+	local VERSION=$(read_config ${KERNEL_DIR}/kernel-version.txt version)
+	local LOCALVERSION=$(read_config ${KERNEL_DIR}/kernel-version.txt localversion)
 	local KERNEL_PATCH_ARCHIVE="/tmp/${NAME}-kernel-${VERSION}${LOCALVERSION}.tar"
 	echo "produce kernel patch archive"
 	rm -f ${KERNEL_PATCH_ARCHIVE}
