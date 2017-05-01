@@ -6,7 +6,7 @@ Tools for Embedded Linux Development.
 Debian/Ubuntu:
 
 ```text
-apt-get install -y squashfs-tools pxz
+apt-get install -y pxz jq kpartx pv squashfs-tools qemu-user-static
 ```
 
 
