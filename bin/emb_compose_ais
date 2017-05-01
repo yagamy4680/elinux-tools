@@ -1,0 +1,159 @@
+#!/bin/bash
+#
+##DOC:	compose multiple archive images (ai[s]) from the given multiple configuration files.
+
+function mycli_command_prerequisites {
+cat <<__EOF__
+mount
+pxz
+__EOF__
+}
+
+
+function mycli_command_help {
+cat <<__EOF__
+${CLI_NAME} ${CLI_ACTION} CONFIGS_DIR INITIAL_IMAGE_URL [REVISION]
+
+For example:
+	${CLI_NAME} ${CLI_ACTION} $(GREEN "/opt/bone-trusty-20160211-oss") $(BLUE "https://archives.t2t.io/embedded-linux/os/beaglebone/derivates/extractions/bone-ubuntu-14.04.3-console-armhf-2016-02-11-2gb-opt.sqfs.xz")
+	${CLI_NAME} ${CLI_ACTION} $(GREEN "/opt/bone-trusty-20160211-oss") $(BLUE "https://archives.t2t.io/embedded-linux/os/beaglebone/derivates/extractions/bone-ubuntu-14.04.3-console-armhf-2016-02-11-2gb-opt.sqfs.xz") $(GRAY "r1")
+
+In 1st example, if there are following configuration files in /opt/bone-trusty-20160211:
+  - c1.yaml
+  - c2.yaml
+  - c3.yaml
+
+Then, this subcommand shall finally compose archive images at /tmp directory, by running $(LIGHT_GREEN apply_parts) subcommand 3 times:
+  - /tmp/bone-trusty-20160211-oss-r20170501-c0.sqfs
+  - /tmp/bone-trusty-20160211-oss-r20170501-c1.sqfs
+  - /tmp/bone-trusty-20160211-oss-r20170501-c2.sqfs
+  - /tmp/bone-trusty-20160211-oss-r20170501-c3.sqfs
+
+The $(YELLOW c0) image is the image downloaded from BASE_IMAGE_URL.
+
+__EOF__
+}
+
+
+function remove_empty_file {
+	[ ! -f "$1" ] && return 0
+	[ "0" == "$(stat --printf='%s' $1)" ] && rm -f "$1" && return 0
+	return 0
+}
+
+
+function download_and_rename {
+	local CACHE_DIR="/var/lib/${CLI_PROJECT_NAME}"
+	local OUTPUT_FILE=$1
+	local URL=$2
+	local FILE=$(basename ${URL})
+	local NAME=${FILE}
+	local COMPRESSED_CACHE_FILE="${CACHE_DIR}/${NAME}"
+	NAME=${NAME%.*}
+	local CACHE_FILE="${CACHE_DIR}/${NAME}"
+
+	remove_empty_file ${OUTPUT_FILE}
+	remove_empty_file ${COMPRESSED_CACHE_FILE}
+	remove_empty_file ${CACHE_FILE}
+
+	INFO "checking ${OUTPUT_FILE}"
+	[ -f "${OUTPUT_FILE}" ] && INFO "skip download because ${OUTPUT_FILE} is existed" && return 0
+
+	INFO "checking ${COMPRESSED_CACHE_FILE}"
+	if [ ! -f "${COMPRESSED_CACHE_FILE}" ]; then
+		wget -O ${COMPRESSED_CACHE_FILE} ${URL}
+		[ "0" != "$?" ] && ERR "failed to download ${OUTPUT_FILE}" && return 1
+	fi
+
+	INFO "checking ${CACHE_FILE}"
+	if [ ! -f "${CACHE_FILE}" ]; then
+		pxz -d -k -v ${COMPRESSED_CACHE_FILE}
+		[ "0" != "$?" ] && ERR "failed to decompress ${COMPRESSED_CACHE_FILE}" && return 2
+	fi
+
+	RUN_CMD cp ${CACHE_FILE} ${OUTPUT_FILE}
+}
+
+
+function apply_parts_on_overlay_directory {
+	local OUTPUT_FILE=$1
+	local INPUT_FILE=$2
+	local CONFIG_FILE=$3
+	local WORK_DIR=$4
+
+	cat ${CONFIG_FILE} | jq .
+	[ "0" != "$?" ] && ERR "invalid json file: ${CONFIG_FILE}" && return 3
+
+	emb overlay mount ${WORK_DIR} ${INPUT_FILE}
+	[ "0" != "$?" ] && ERR "failed to mount overlay fs with ${INPUT_FILE}" && return 3
+
+	emb apply_parts ${WORK_DIR} ${CONFIG_FILE}
+	EXIT_CODE=$?
+
+	if [ "0" != "${EXIT_CODE}" ]; then
+		emb overlay umount ${WORK_DIR}
+		return 4
+	fi
+	
+	emb ad2ai ${WORK_DIR} ${OUTPUT_FILE}
+	EXIT_CODE=$?
+	emb overlay umount ${WORK_DIR}
+	return ${EXIT_CODE}
+}
+
+
+function mycli_command_entry {
+	local CONFIGS_DIR=$1
+	local INITIAL_IMAGE_URL=$2
+	local REVISION=$3
+
+	[ ! -d "${CONFIGS_DIR}" ] && ERR "no such configs-dir: ${CONFIGS_DIR}" && exit 1
+	[ ! -f "${CONFIGS_DIR}/c1.yaml" ] && ERR "invalid configs-dir ${CONFIGS_DIR} because of missing c1.yaml" && exit 2
+
+	[ "" == "${REVISION}" ] && REVISION="r$(date '+%Y%m%d')"
+	local BUILD_NAME=$(basename ${CONFIGS_DIR})
+	local OUTPUT_DIR="/tmp"
+	local IMAGE_NAME="${BUILD_NAME}-${REVISION}"
+	local INITIAL_IMAGE="${OUTPUT_DIR}/${IMAGE_NAME}-c0.sqfs"
+
+	download_and_rename ${INITIAL_IMAGE} ${INITIAL_IMAGE_URL}
+	[ "0" != "$?" ] && ERR "failed to prepare initial image before composition" && exit 3
+
+	# Checking squid_deb_proxy, specific for debian/ubuntu distributions.
+	#
+	[ "" == "$(netstat -lnt | grep ':3128')" ] && ERR "please setup debian squid proxy, e.g. ./run_docker_squid_deb_proxy" && return 1
+
+	local CONFIG_FILES=($(find ${CONFIGS_DIR} -maxdepth 1 -type f -name 'c?.yaml' | sort))
+	for cf in "${CONFIG_FILES[@]}"; do
+		local IDX=$(basename $cf | sed 's/^c//g' | sed 's/\.yaml$//g')
+		local LAST=$((IDX-1))
+		local IN_FILE="${OUTPUT_DIR}/${IMAGE_NAME}-c${LAST}.sqfs"
+		local OUT_FILE="${OUTPUT_DIR}/${IMAGE_NAME}-c${IDX}.sqfs"
+		local CONFIG_FILE="/tmp/${IMAGE_NAME}-$(basename $cf).json"
+		local WORK_DIR="${OUTPUT_DIR}/${IMAGE_NAME}-$(date '+%Y%m%d%H%M%S')"
+
+		# Ignore this round because output file is already existed.
+		#
+		remove_empty_file ${OUT_FILE}
+		[ -f "${OUTPUT_FILE}" ] && INFO "skip because of ${OUT_FILE}" && continue
+
+		# Generate configuration json file for apply_parts subcommand.
+		#
+		local EXIT_CODE="0"
+		local TMP1=$(mktemp /tmp/XXXXXX)
+		local TMP2=$(mktemp /tmp/XXXXXX)
+		cat ${cf} | sed "s/PROFILE_NAME/${IMAGE_NAME}/g" > ${TMP1} &&
+			${CLI_DIR}/tools/transform/app.ls yaml2json -s ${TMP1} -o ${TMP2} &&
+			cat ${TMP2} | jq ".configs[\"elinux-common\"].PACKAGE_CACHE_SERVER=\"localhost:3128\"" > ${CONFIG_FILE}
+		EXIT_CODE=$?
+		rm -f ${TMP1}
+		rm -f ${TMP2}
+		[ "0" != "${EXIT_CODE}" ] && ERR "failed to generate ${CONFIG_FILE}" && exit ${EXIT_CODE}
+
+		local CMD="apply_parts_on_overlay_directory ${OUT_FILE} ${IN_FILE} ${CONFIG_FILE} ${WORK_DIR}"
+		INFO $(YELLOW "${CMD}") && ${CMD}
+		local EXIT_CODE=$?
+		[ "0" != "${EXIT_CODE}" ] && exit ${EXIT_CODE}
+	done
+}
+
