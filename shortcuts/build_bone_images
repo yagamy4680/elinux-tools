@@ -71,9 +71,11 @@ function build_image_0 {
 function build_overlay_image {
 	local OUTPUT_FILE=$1
 	local INPUT_FILE=$2
-	local CONFIG_SOURCE_FILE="${CURRENT}/bone_trusty_c${POSTFIX}.yaml"
+	local CONFIG_SOURCE_FILE="${CONFIGS_DIR}/c${POSTFIX}.yaml"
 	local CONFIG_JSON_FILE="/tmp/$(basename ${CONFIG_SOURCE_FILE}).json"
 
+	[ ! -f "${CONFIG_SOURCE_FILE}" ] && ERR "no such configuration file ${CONFIG_SOURCE_FILE}" && return 1
+	[ ! -f "${INPUT_FILE}" ] && ERR "missing input image file ${INPUT_FILE}" && return 1
 	[ -f "${OUTPUT_FILE}" ] && INFO "skip because of ${OUTPUT_FILE}" && return 0
 	[ "" == "$(netstat -lnt | grep ':3128')" ] && ERR "please setup debian squid proxy, e.g. ./run_docker_squid_deb_proxy" && return 1
 
@@ -128,6 +130,9 @@ function build_image_4 {
 }
 
 function build_all_images {
+	local CONFIGS_DIR=$1
+	[ "" == "${CONFIGS_DIR}" ] && ERR "please specify CONFIGS_DIR as 1st argument" && return 1
+	[ ! -d "${CONFIGS_DIR}" ] && ERR "missing configs_dir: $1" && return 2
 	local FUNCS=($(cat ${BASH_SOURCE[0]} | grep "^function build_image_" | awk '{print $2}' | sort))
 	for f in "${FUNCS[@]}"; do
 		local POSTFIX=$(echo ${f} | awk -F'_' '{print $3}')
@@ -135,7 +140,7 @@ function build_all_images {
 		local INPUT_FILE="${OUTPUT_DIR}/${IMAGE_NAME}-c${LAST}.sqfs"
 		local OUTPUT_FILE="${OUTPUT_DIR}/${IMAGE_NAME}-c${POSTFIX}.sqfs"
 		[ "0" == "${POSTFIX}" ] && INPUT_FILE="n/a"
-		POSTFIX=${POSTFIX} $f ${OUTPUT_FILE} ${INPUT_FILE}
+		POSTFIX=${POSTFIX} CONFIGS_DIR=${CONFIGS_DIR} $f ${OUTPUT_FILE} ${INPUT_FILE}
 		local EXIT_CODE=$?
 		[ "0" != "${EXIT_CODE}" ] && exit ${EXIT_CODE}
 	done
