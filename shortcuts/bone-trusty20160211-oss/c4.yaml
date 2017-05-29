@@ -4,6 +4,7 @@ name: PROFILE_NAME
 
 parts:
     - patch-kernel
+    - oss-yapps
 
 
 envs:
@@ -13,6 +14,9 @@ envs:
 
 
 configs:
+    elinux-common:
+        TIMEZONE: Asia/Taipei
+
     oss-base:
         TEST: false
 
