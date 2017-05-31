@@ -7,9 +7,7 @@ cat <<__EOF__
 kpartx
 losetup
 python2:colorama
-python2:aaa
 python3:colorama
-python3:aaa
 __EOF__
 }
 
@@ -25,8 +23,13 @@ __EOF__
 
 
 function mycli_command_entry {
-	INFO "show all arguments:"
-	INFO "args[0] = $1"
-	INFO "args[1] = $2"
-	INFO $@
+	INFO "CLI_DIR = ${CLI_DIR}"
+	INFO "CLI_BIN_DIR = ${CLI_BIN_DIR}"
+	INFO "CLI_HELPER_DIR = ${CLI_HELPER_DIR}"
+	INFO "CLI_RESOURCE_DIR = ${CLI_RESOURCE_DIR}"
+	INFO "CLI_NAME = ${CLI_NAME}"
+	INFO "CLI_PROJECT_NAME = ${CLI_PROJECT_NAME}"
+	INFO "CLI_ACTION = ${CLI_ACTION}"
+	INFO "BASH_SOURCE = ${BASH_SOURCE[0]}"
+	INFO "arguments: $@"
 }
