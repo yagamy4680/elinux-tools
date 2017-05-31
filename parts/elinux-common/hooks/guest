@@ -39,7 +39,6 @@ function cat_no_comments {
 function generate_package_list {
 cat <<__EOF__ > $2
 $(cat $1)
-$([ "undefined" == "${ELINUX_COMMON_TIMEZONE}" ] || echo tzdata)
 $([ -f "${AD_BUILD_WORK_PYTHON2_PKG_LIST}" ] && [ "0" != "$(cat_no_comments ${AD_BUILD_WORK_PYTHON2_PKG_LIST} | wc -l)" ] && echo python-pip python-dev)
 $([ -f "${AD_BUILD_WORK_PYTHON3_PKG_LIST}" ] && [ "0" != "$(cat_no_comments ${AD_BUILD_WORK_PYTHON3_PKG_LIST} | wc -l)" ] && echo python3-pip python-dev)
 __EOF__
