@@ -1,2 +1,2 @@
 #!/bin/bash
-npm install handlebars js-yaml livescript yargs@7.0.2
+npm install handlebars js-yaml livescript yargs@7.0.2 lodash.merge

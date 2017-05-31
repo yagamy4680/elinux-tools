@@ -1,4 +1,5 @@
 require! <[fs]>
+merge = require \lodash.merge
 
 ERR_EXIT = (message, code) -> 
 	console.error message
@@ -20,8 +21,8 @@ module.exports = exports =
 		files = argv._
 		files.shift!
 		# console.error "files => #{JSON.stringify files}"
+		/*
 		j0 = files.shift!
-		# console.error "loading #{j0}"
 		text = fs.readFileSync j0
 		global.context = JSON.parse text
 		for f in files
@@ -31,6 +32,11 @@ module.exports = exports =
 			for key, value of json
 				global.context[key] = value
 		text = JSON.stringify global.context
+		*/
+		jsons = [ JSON.parse fs.readFileSync f for f in files ]
+		jsons = [ {} ] ++ jsons
+		result = merge.apply null, jsons
+		text = JSON.stringify result
 		(write-err) <- fs.writeFile output, text
 		return ERR_EXIT "failed to write #{output} because of #{write-err}", 1 if write-err?
 		return global.safe-exit!
