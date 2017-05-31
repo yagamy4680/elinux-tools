@@ -14,7 +14,7 @@ __EOF__
 
 function mycli_command_help {
 cat <<__EOF__
-This is my command: $(LIGHT_GREEN $BASH_SOURCE)
+This is my command: $(LIGHT_GREEN $BASH_SOURCE).
 
 show another word
 	$(GRAY $0) $(YELLOW Hello) $(PURPLE World)
