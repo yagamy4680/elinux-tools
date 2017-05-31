@@ -117,7 +117,7 @@ function process_part_pre {
 	local VALUE="$(cat ${AD_BUILD_CONF_JSON} | jq .configs | jq ".[\"${PART}\"]")"
 	case "${VALUE}" in
 		null|undefined)
-			INFO "no .configs.${PART} in ${AD_BUILD_CONF_JSON}"
+			INFO "missing $(RED .configs.${PART}) in ${AD_BUILD_CONF_JSON}, ignore it."
 			;;
 		*)
 			cat ${AD_BUILD_CONF_JSON} | jq ".[\"configs\"][\"${PART}\"]" > ${PART_WORK_ENV_JSON_SRC1}
@@ -198,7 +198,7 @@ function run_hook_script {
 			INFO "run script with qemu: $(PURPLE $(cat ${TMP_FILE}))"
 
 			# Chroot and run
-			run_bash_cmd "CHROOT_SPECIFIC=${AD_ROOTFS_TYPE} ${CLI_NAME} chroot script ${AD_ROOTFS_DIR} ${TMP_FILE}"
+			run_bash_cmd "CHROOT_SPECIFIC=${AD_ROOTFS_TYPE} ${CLI_BIN_DIR}/${CLI_NAME} chroot script ${AD_ROOTFS_DIR} ${TMP_FILE}"
 			EXIT_CODE=$?
 
 			# Clean up
@@ -243,26 +243,27 @@ function process_part_post {
 
 function initialize_parts_dirs {
 	local CLI_PARTS_DIR="${CLI_DIR}/parts"
-	[ "" == "${PARTS_DIRS}" ] && local PARTS_DIRS=${CLI_PARTS_DIR} || PARTS_DIRS="${CLI_DIR}/parts:${PARTS_DIRS}"
+	[ "" == "${PARTS_DIRS}" ] && local PARTS_DIRS=${CLI_PARTS_DIR} || PARTS_DIRS="${CLI_PARTS_DIR}:${PARTS_DIRS}"
+	INFO "PARTS_DIRS => ${PARTS_DIRS}"
 	local DIRS=($(echo ${PARTS_DIRS} | tr ':' '\n'))
 	local TMP1=$(mktemp /tmp/XXXXXX)
 	local TMP2=$(mktemp /tmp/XXXXXX)
 
 	for p in "${PARTS[@]}"; do
-		echo $p >> ${TMP1}
 		echo $p >> ${AD_BUILD_WORK_PARTS_FILE}
 	done
 
 	for d in "${DIRS[@]}"; do
 		for p in "${PARTS[@]}"; do
-			echo -e "${p}:$(find ${d} -maxdepth 1 -mindepth 1 -name ${p})" >> ${TMP1}
+			local RESULTS=$(find ${d} -maxdepth 1 -mindepth 1 -name ${p})
+			[ "" == "${RESULTS}" ] || echo -e "${p}:${RESULTS}" >> ${TMP1}
 		done
 	done
 	
 	for p in "${PARTS[@]}"; do
-		local LINE=$(cat ${TMP1} | grep "^${p}" | tail -n1)
+		local LINE=$(cat ${TMP1} | grep "^${p}:" | tail -n1)
 		[ "" == "${LINE}" ] && ERR "failed to find part ${p}" && exit 20
-		local PART=$(echo ${LINE} | awk -F':' '{print $1}')
+		local PART=${p}
 		local DIR=$(echo ${LINE} | awk -F':' '{print $2}')
 		[ "" == "${DIR}" ] && ERR "failed to find part ${p} directory" && exit 21
 		# [ ! -f "${DIR}/config.ls" ] && ERR "failed to find config file for the part ${PART} (${DIR}/config.ls)" && exit 22
@@ -316,7 +317,7 @@ function initialize_work_dir {
 	local CURRENT=$(pwd)
 	cd $(dirname $BASH_SOURCE)
 	cd ..
-	RUN_CMD mount -o bind $(pwd) ${AD_ROOTFS_WORK_ELINUX_TOOLS_DIR}
+	RUN_CMD mount -o bind ${CLI_DIR} ${AD_ROOTFS_WORK_ELINUX_TOOLS_DIR}
 	cd ${CURRENT}
 }
 
