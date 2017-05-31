@@ -66,6 +66,7 @@ function overlayfs_umount {
 	local DATETIME=$(mount | grep ${TARGET_DIR} | awk '{print $6}' | sed 's/[(|)]//g' | tr ',' '\n' | grep '^lowerdir' | awk -F'=' '{print $2}' | xargs dirname | xargs basename)
 	[ "" == "${DATETIME}" ] && ERR "target directory ${TARGET_DIR} is not mounted" && exit 11
 
+	mount | grep " ${TARGET_DIR}/" | awk '{print $3}' | xargs -I{} sh -c "umount -v {}"
 	mount | grep ${DATETIME} | grep overlay | awk '{print $3}' | xargs -I{} sh -c "umount -v {}"
 	mount | grep ${DATETIME} | awk '{print $3}' | xargs -I{} sh -c "umount -v {}"
 }
