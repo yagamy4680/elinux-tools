@@ -5,6 +5,14 @@ ERR_EXIT = (message, code) ->
 	console.error message
 	return process.exit code
 
+READ_FILE_AS_JSON = (f) ->
+	[name, file] = tokens = f.split \:
+	return JSON.parse fs.readFileSync name unless file?
+	result = {}
+	result[name] = JSON.parse fs.readFileSync file
+	return result
+
+
 module.exports = exports =
 	command: \jsons
 	describe: "load several json files, and merge them in order"
@@ -20,20 +28,7 @@ module.exports = exports =
 		{output} = argv
 		files = argv._
 		files.shift!
-		# console.error "files => #{JSON.stringify files}"
-		/*
-		j0 = files.shift!
-		text = fs.readFileSync j0
-		global.context = JSON.parse text
-		for f in files
-			console.error "loading #{f}"
-			text = fs.readFileSync f
-			json = JSON.parse text
-			for key, value of json
-				global.context[key] = value
-		text = JSON.stringify global.context
-		*/
-		jsons = [ JSON.parse fs.readFileSync f for f in files ]
+		jsons = [ READ_FILE_AS_JSON f for f in files ]
 		jsons = [ {} ] ++ jsons
 		result = merge.apply null, jsons
 		text = JSON.stringify result
