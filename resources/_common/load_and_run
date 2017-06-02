@@ -17,7 +17,8 @@ function fn_exist {
 
 
 function run_my_cmd {
-	[ "host" == "${HOST_OR_GUEST}" ] && INFO $(GREEN $@) || INFO $(YELLOW $@)
+	[ "true" == "${COMMAND_VERBOSE_TAB}" ] && local COMMAND_PREFIX="\t"
+	[ "host" == "${HOST_OR_GUEST}" ] && INFO $(GREEN ${COMMAND_PREFIX}$@) || INFO $(YELLOW ${COMMAND_PREFIX}$@)
 	[ "true" == "${DRY_RUN}" ] && return 0
 	if [ "true" == "${NO_TAB}" ]; then
 		${BASH} -c "$@" 2>&1

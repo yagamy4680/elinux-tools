@@ -129,8 +129,29 @@ function install_all_packages {
 function run_service_useradd {
 	local DIR=$1
 	INFO "run_service_useradd: ${DIR}"
-	# ls -al ${DIR}
-	# find ${DIR} -type f | awk '{printf "\t%s\n", $0}'
+	local FILES=($(find ${DIR} -type f))
+	export COMMAND_VERBOSE_TAB=true
+	for file in "${FILES[@]}"; do
+		local USER=$(basename ${file})
+		local USER_HOME="/home/${USER}"
+		local USER_SSH="${USER_HOME}/.ssh"
+		local SUDOER_FILE="/etc/sudoers"
+		INFO "adding user $(LIGHT_GREEN ${USER}) ..."
+		if [ ! -d "${USER_HOME}" ]; then
+			run_my_cmd "useradd -m -d ${USER_HOME} -s /bin/bash ${USER}"
+			[ "0" != "$?" ] && ERR "failed to create user ${USER}" && continue
+		fi
+		[ ! -d "${USER_SSH}" ] && run_my_cmd "mkdir -p ${USER_SSH}"
+		run_my_cmd "chown ${USER}:${USER} ${USER_SSH}"
+		run_my_cmd "chmod 0700 ${USER_SSH}"
+		run_my_cmd "cat ${file} | grep -v '^#' >> ${USER_SSH}/authorized_keys"
+		run_my_cmd "chmod 0600 ${USER_SSH}/authorized_keys"
+		run_my_cmd "chown ${USER}:${USER} ${USER_SSH}/authorized_keys"
+		[ "" == "$(cat ${file} | grep -v '^###!!SUDOER')" ] && continue
+		[ "" != "$(cat ${SUDOER_FILE} | grep -v '^#' | grep ${USER})" ] && continue
+		run_my_cmd "echo \"${USER} ALL=(ALL) NOPASSWD: ALL\" >> ${SUDOER_FILE}"
+	done
+	unset COMMAND_VERBOSE_TAB
 	return 0
 }
 
