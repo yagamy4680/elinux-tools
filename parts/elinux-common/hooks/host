@@ -54,7 +54,7 @@
 function exist_any_file {
 	local DIR=$1
 	[ ! -d "${DIR}" ] && return 1
-	[ "0" == "$(find ${DIR} -type f | wc -l)" ] && return 2
+	[ "0" == "$(find ${DIR} -type f | grep -v "/\.gitkeep$" | wc -l)" ] && return 2
 	return 0
 }
 
@@ -117,7 +117,7 @@ function copy_service_files {
 
 		[ ! -d "${SRC_DIR}" ] && continue
 		local TMP_FILE=$(mktemp /tmp/XXXXXX)
-		find ${SRC_DIR} -mindepth 1 -maxdepth 1 -type f > ${TMP_FILE}
+		find ${SRC_DIR} -mindepth 1 -maxdepth 1 -type f | grep -v "/\.gitkeep$" > ${TMP_FILE}
 		if [ "0" == "$(cat ${TMP_FILE} | wc -l)" ]; then
 			INFO "${DBG_PREFIX} => [${THE_PART}] ignore ${SRC_DIR} because of no existing files"
 			rm -f ${TMP_FILE}
