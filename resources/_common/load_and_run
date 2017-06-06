@@ -28,6 +28,12 @@ function run_my_cmd {
 }
 
 
+function missing_implementation {
+	ERR "${FUNCNAME[1]}:${BASH_LINENO[1]} => missing implementation. $@"
+	return 1
+}
+
+
 function check_prerequisites {
 	source ${ENV_BASH}
 	export PART_DIR="${AD_BUILD_WORK_TOPDIR}/parts/${PART_NAME}"
