@@ -71,9 +71,9 @@ function pre_image {
 # Before running script inside rootfs with chroot and qemu (guest script).
 #
 function pre_guest {
-	INFO "BUILDSRC_BLUEZ_SOURCE_URL = ${BUILDSRC_BLUEZ_SOURCE_URL}"
-	INFO "BUILDSRC_BLUEZ_BUILD_CONFIGURE_OPTS = ${BUILDSRC_BLUEZ_BUILD_CONFIGURE_OPTS}"
-	INFO "BUILDSRC_BLUEZ_INSTALL_GATTTOOL = ${BUILDSRC_BLUEZ_INSTALL_GATTTOOL}"
+	# INFO "BUILDSRC_BLUEZ_SOURCE_URL = ${BUILDSRC_BLUEZ_SOURCE_URL}"
+	# INFO "BUILDSRC_BLUEZ_BUILD_CONFIGURE_OPTS = ${BUILDSRC_BLUEZ_BUILD_CONFIGURE_OPTS}"
+	# INFO "BUILDSRC_BLUEZ_INSTALL_GATTTOOL = ${BUILDSRC_BLUEZ_INSTALL_GATTTOOL}"
 	local FILENAME=$(basename ${BUILDSRC_BLUEZ_SOURCE_URL})
 	local NAME=$(echo ${FILENAME} | sed 's/.tar.xz$//g')
 	local CACHE_DIR="/tmp" 
@@ -89,6 +89,7 @@ function pre_guest {
 	run_my_cmd "mkdir -p ${TARGET_DIR}"
 	run_my_cmd "tar xf ${CACHE_FILE} -C ${TARGET_DIR}"
 	[ "0" != "$?" ] && ERR "failed to decompress ${CACHE_FILE}" && return 2
+	return 0
 }
 
 

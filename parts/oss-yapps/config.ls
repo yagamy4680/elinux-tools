@@ -5,6 +5,7 @@ dependencies:
 	debian: <[
 		sqlite3
 		libsqlite3-dev
+		libcurl4-openssl-dev
 	]>
 
 	# The python2 packages to be installed via 
