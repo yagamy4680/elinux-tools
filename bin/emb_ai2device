@@ -88,10 +88,14 @@ function mycli_command_entry {
 		RUN_CMD mount ${DEVICE_PARTITION} ${PARTITION_DST_DIR}
 		[ "0" != "$?" ] && ERR "failed to mount ${DEVICE_PARTITION}" && break
 
-		RUN_CMD cd ${PARTITION_SRC_DIR}
-		local SIZE=$(du -sb . | awk '{print $1}')
-		tar cf - . | pv -s ${SIZE} | tar xf - -C ${PARTITION_DST_DIR}
-		RUN_CMD cd ${CURRENT}
+		if [ -d "${PARTITION_SRC_DIR}" ]; then
+			RUN_CMD cd ${PARTITION_SRC_DIR}
+			local SIZE=$(du -sb . | awk '{print $1}')
+			tar cf - . | pv -s ${SIZE} | tar xf - -C ${PARTITION_DST_DIR}
+			RUN_CMD cd ${CURRENT}
+		else
+			INFO "ignore empty partition directory: ${PARTITION_SRC_DIR}"
+		fi
 
 		RUN_CMD sync
 		RUN_CMD sleep 1
