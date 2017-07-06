@@ -20,6 +20,7 @@ dependencies:
 			parted
 			dnsutils
 			lsof
+			curl
 		]>
 
 		# Development tools
