@@ -40,6 +40,7 @@ dependencies:
 			vim
 			telnet
 			virt-what
+			bc
 		]>
 
 		# For ntpd daemon and sntp tool.
