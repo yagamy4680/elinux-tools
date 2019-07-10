@@ -6,6 +6,7 @@ function mycli_command_prerequisites {
 cat <<__EOF__
 mount
 pxz
+nc
 __EOF__
 }
 
@@ -52,6 +53,8 @@ function download_and_rename {
 	NAME=${NAME%.*}
 	local CACHE_FILE="${CACHE_DIR}/${NAME}"
 
+	[ ! -d "${CACHE_DIR}" ] && mkdir -p ${CACHE_DIR}
+
 	remove_empty_file ${OUTPUT_FILE}
 	remove_empty_file ${COMPRESSED_CACHE_FILE}
 	remove_empty_file ${CACHE_FILE}
@@ -87,7 +90,7 @@ function apply_parts_on_overlay_directory {
 	emb overlay mount ${WORK_DIR} ${INPUT_FILE}
 	[ "0" != "$?" ] && ERR "failed to mount overlay fs with ${INPUT_FILE}" && return 3
 
-	emb apply_parts ${WORK_DIR} ${CONFIG_FILE}
+	time emb apply_parts ${WORK_DIR} ${CONFIG_FILE}
 	EXIT_CODE=$?
 
 	if [ "0" != "${EXIT_CODE}" ]; then
@@ -121,8 +124,11 @@ function mycli_command_entry {
 
 	# Checking squid_deb_proxy, specific for debian/ubuntu distributions.
 	#
-	[ "" == "$(netstat -lnt | grep ':3128')" ] && ERR "please setup debian squid proxy, e.g. ./run_docker_squid_deb_proxy" && return 1
-
+	if [ "" != "${DEBIAN_PACKAGE_CACHE_SERVER}" ]; then
+		nc -zvw3 ${DEBIAN_PACKAGE_CACHE_SERVER} 3128
+		[ "0" != "$?" ] && ERR "please setup debian squid proxy on ${DEBIAN_PACKAGE_CACHE_SERVER}, e.g. running https://github.com/yagamy4680/elinux-tools/blob/master/shortcuts/run_docker_squid_deb_proxy" && return 1
+	fi
+		
 	local CONFIG_FILES=($(find ${CONFIGS_DIR} -maxdepth 1 -type f -name 'c?.yaml' | sort))
 	for cf in "${CONFIG_FILES[@]}"; do
 		local IDX=$(basename $cf | sed 's/^c//g' | sed 's/\.yaml$//g')
@@ -142,10 +148,17 @@ function mycli_command_entry {
 		local EXIT_CODE="0"
 		local TMP1=$(mktemp /tmp/XXXXXX)
 		local TMP2=$(mktemp /tmp/XXXXXX)
-		cat ${cf} | sed "s/PROFILE_NAME/${IMAGE_NAME}/g" > ${TMP1} &&
-			${CLI_DIR}/tools/transform/app.ls yaml2json -s ${TMP1} -o ${TMP2} &&
-			cat ${TMP2} | jq ".configs[\"elinux-common\"].PACKAGE_CACHE_SERVER=\"localhost:3128\"" > ${CONFIG_FILE}
+		cat ${cf} | sed "s/PROFILE_NAME/${IMAGE_NAME}/g" > ${TMP1} && ${CLI_DIR}/tools/transform/app.ls yaml2json -s ${TMP1} -o ${TMP2}
 		EXIT_CODE=$?
+		if [ "0" == "${EXIT_CODE}" ]; then
+			if [ "" != "${DEBIAN_PACKAGE_CACHE_SERVER}" ]; then
+				cat ${TMP2} | jq ".configs[\"elinux-common\"].PACKAGE_CACHE_SERVER=\"${DEBIAN_PACKAGE_CACHE_SERVER}:3128\"" > ${CONFIG_FILE}
+				EXIT_CODE=$?
+			else
+				cat ${TMP2} > ${CONFIG_FILE}
+				EXIT_CODE=$?
+			fi
+		fi
 		rm -f ${TMP1}
 		rm -f ${TMP2}
 		[ "0" != "${EXIT_CODE}" ] && ERR "failed to generate ${CONFIG_FILE}" && exit ${EXIT_CODE}

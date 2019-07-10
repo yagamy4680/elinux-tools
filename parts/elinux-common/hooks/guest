@@ -45,9 +45,9 @@ __EOF__
 }
 
 
-
 function install_debian_packages {
 	local PKG_FILE=$1
+	local DEB_CACHE_CONF="/etc/apt/apt.conf.d/99proxy"
 	if [ "0" == "$(cat_no_comments ${PKG_FILE} | wc -l)" ]; then
 		INFO "no need to update debian/ubuntu packages"
 		return 0
@@ -55,12 +55,32 @@ function install_debian_packages {
 	if [ "undefined" != "${ELINUX_COMMON_PACKAGE_CACHE_SERVER}" ]; then
 		# NO_TAB="true" run_my_cmd "apt-get update" || return $?
 		# NO_TAB="true" run_my_cmd "apt-get install -y squid-deb-proxy-client" || return $?
-		echo "Acquire::http { Proxy \"http://${ELINUX_COMMON_PACKAGE_CACHE_SERVER}\"; };" > /etc/apt/apt.conf.d/99proxy
-		[ -f "/etc/apt/apt.conf.d/99proxy" ] && INFO "/etc/apt/apt.conf.d/99proxy:" && cat /etc/apt/apt.conf.d/99proxy
+		echo "Acquire::http { Proxy \"http://${ELINUX_COMMON_PACKAGE_CACHE_SERVER}\"; };" > ${DEB_CACHE_CONF}
+		[ -f "${DEB_CACHE_CONF}" ] && INFO "${DEB_CACHE_CONF}:" && cat ${DEB_CACHE_CONF}
 	fi
 
 	NO_TAB="true" run_my_cmd "apt-get update" || return $?
+
+	#if [ "" == "$(which apt-fast)" ]; then
+		#
+		# installation scripts copied from https://git.io/vokNn
+		#
+	#	INFO "installing apt-fast ..."
+	#	if ! dpkg-query --show aria2 >/dev/null 2>&1; then
+	#		apt-get install -y aria2
+	#	fi
+	#	wget https://raw.githubusercontent.com/ilikenwf/apt-fast/master/apt-fast -O /usr/local/sbin/apt-fast
+	#	chmod +x /usr/local/sbin/apt-fast
+	#	[ ! -f "/etc/apt-fast.conf" ] && wget https://raw.githubusercontent.com/ilikenwf/apt-fast/master/apt-fast.conf -O /etc/apt-fast.conf
+	#	echo "DOWNLOADBEFORE=true" >> /etc/apt-fast.conf
+	#	echo "_MAXNUM=20" >> /etc/apt-fast.conf
+	#	echo "_MAXCONPERSRV=10" >> /etc/apt-fast.conf
+	#fi
+
+	# NO_TAB="true" run_my_cmd "apt-fast install -y $(cat_no_comments ${PKG_FILE} | tr '\n' ' ')"
 	NO_TAB="true" run_my_cmd "apt-get install -y $(cat_no_comments ${PKG_FILE} | tr '\n' ' ')"
+
+	NO_TAB="true" run_my_cmd "rm -f ${DEB_CACHE_CONF}"
 }
 
 
