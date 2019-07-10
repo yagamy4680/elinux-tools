@@ -77,6 +77,7 @@ function pre_guest {
 	run_my_cmd "mkdir -p ${TARGET_DIR}"
 	run_my_cmd "git clone ${BUILDSRC_FSWEBCAM_GITHUB_URL} ${TARGET_DIR}"
 	[ "0" != "$?" ] && ERR "failed to git clone ${CACHE_FILE}" && return 2
+	return 0
 }
 
 

@@ -20,6 +20,7 @@ dependencies:
 			parted
 			dnsutils
 			lsof
+			curl
 		]>
 
 		# Development tools
@@ -40,6 +41,7 @@ dependencies:
 			vim
 			telnet
 			virt-what
+			bc
 		]>
 
 		# For ntpd daemon and sntp tool.
