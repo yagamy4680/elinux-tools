@@ -61,24 +61,23 @@ function install_debian_packages {
 
 	NO_TAB="true" run_my_cmd "apt-get update" || return $?
 
-	#if [ "" == "$(which apt-fast)" ]; then
-		#
-		# installation scripts copied from https://git.io/vokNn
-		#
-	#	INFO "installing apt-fast ..."
-	#	if ! dpkg-query --show aria2 >/dev/null 2>&1; then
-	#		apt-get install -y aria2
-	#	fi
-	#	wget https://raw.githubusercontent.com/ilikenwf/apt-fast/master/apt-fast -O /usr/local/sbin/apt-fast
-	#	chmod +x /usr/local/sbin/apt-fast
-	#	[ ! -f "/etc/apt-fast.conf" ] && wget https://raw.githubusercontent.com/ilikenwf/apt-fast/master/apt-fast.conf -O /etc/apt-fast.conf
-	#	echo "DOWNLOADBEFORE=true" >> /etc/apt-fast.conf
-	#	echo "_MAXNUM=20" >> /etc/apt-fast.conf
-	#	echo "_MAXCONPERSRV=10" >> /etc/apt-fast.conf
-	#fi
+	if [ "true" == "${ELINUX_COMMON_DEBIAN_APT_FAST_ENABLED}" ]; then
+		local APT_GET="apt-fast"
+		INFO "installing apt-fast ..."
+		if ! dpkg-query --show aria2 >/dev/null 2>&1; then
+			NO_TAB="true" run_my_cmd "apt-get install aria2 realpath -y" || return $?
+		fi
+		wget https://raw.githubusercontent.com/ilikenwf/apt-fast/master/apt-fast -O /usr/local/sbin/apt-fast
+		chmod +x /usr/local/sbin/apt-fast
+		[ ! -f "/etc/apt-fast.conf" ] && wget https://raw.githubusercontent.com/ilikenwf/apt-fast/master/apt-fast.conf -O /etc/apt-fast.conf
+		echo "DOWNLOADBEFORE=true" >> /etc/apt-fast.conf
+		echo "_MAXNUM=20" >> /etc/apt-fast.conf
+		echo "_MAXCONPERSRV=10" >> /etc/apt-fast.conf
+	else
+		local APT_GET="apt-get"
+	fi
 
-	# NO_TAB="true" run_my_cmd "apt-fast install -y $(cat_no_comments ${PKG_FILE} | tr '\n' ' ')"
-	NO_TAB="true" run_my_cmd "apt-get install -y $(cat_no_comments ${PKG_FILE} | tr '\n' ' ')"
+	NO_TAB="true" run_my_cmd "${APT_GET} install -y $(cat_no_comments ${PKG_FILE} | tr '\n' ' ')"
 
 	NO_TAB="true" run_my_cmd "rm -f ${DEB_CACHE_CONF}"
 }

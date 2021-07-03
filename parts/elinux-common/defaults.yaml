@@ -18,3 +18,10 @@ TIMEZONE: undefined
 # `apt-get install`.
 #
 PACKAGE_CACHE_SERVER: undefined
+
+
+
+##
+# Enable `apt-fast` to install debian packages.
+#
+DEBIAN_APT_FAST_ENABLED: false
