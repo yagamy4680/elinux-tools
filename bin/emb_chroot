@@ -19,6 +19,36 @@ function check_rootfs {
 }
 
 
+function detect_rootfs {
+	local ROOTFS=$1
+	##
+	# Check rootfs is Raspbian.
+	#
+	if [ "0" != "$(cat ${ROOTFS}/etc/os-release | grep -i raspbian | wc -l)" ]; then
+		export CHROOT_SPECIFIC=raspbian
+		INFO "detect rootfs for Raspbian"
+		cat ${ROOTFS}/etc/os-release | grep -i raspbian | awk '{printf "\t%s\n", $0}'
+	fi
+
+	##
+	# Detect which shell is used.
+	#
+	if [ -f "${ROOTFS}/usr/bin/sh" ]; then
+		if [ -s "${ROOTFS}/usr/bin/sh" ]; then
+			local RSH=$(basename $(which $(readlink "${ROOTFS}/usr/bin/sh")))
+			INFO "detect the shell: ${RSH}"
+			export ROOTFS_SHELL=/usr/bin/${RSH}
+		else
+			INFO "detect the shell: sh"
+			export ROOTFS_SHELL=/usr/bin/sh
+		fi
+	else
+		ERR "missing /usr/bin/sh as Shell entry point"
+		exit 1
+	fi
+}
+
+
 function remount_sys_dirs {
 	local ROOTFS=$1
 	shift
@@ -43,11 +73,16 @@ function pre_rootfs {
 	local ROOTFS=$1
 	local KERNEL_REGISTER_MARK="/tmp/.arm-binfmt_misc"
 
+	check_rootfs ${ROOTFS} root lib etc usr opt var
+	detect_rootfs ${ROOTFS}
+
 	case "${CHROOT_SPECIFIC}" in
 		raspbian)
 			# Inspired by the section "One thing to fix" in https://wiki.debian.org/RaspberryPi/qemu-user-static
 			#	To get everything work (e.g., network) you need to comment out everything in ~/rpi_mnt/etc/ld.so.preload 
 			#   before chrooting in. Take care of that now!`
+			#
+			# Inspired by another article: https://docs.j7k6.org/raspberry-pi-chroot-armv7-qemu/
 			#
 			RUN_CMD mv ${ROOTFS}/etc/ld.so.preload ${ROOTFS}/etc/ld.so.preload.bak
 			RUN_CMD touch ${ROOTFS}/etc/ld.so.preload
@@ -61,7 +96,6 @@ function pre_rootfs {
 			;;
 	esac
 
-	check_rootfs ${ROOTFS} root lib etc usr opt var
 	remount_sys_dirs ${ROOTFS} tmp dev sys proc
 
 	# This registers the static QEMU we copied as arm-interpreter to the kernel.
@@ -70,9 +104,11 @@ function pre_rootfs {
 		echo ':arm:M::\x7fELF\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x28\x00:\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff:/usr/bin/qemu-arm-static:' > /proc/sys/fs/binfmt_misc/register 2>/dev/null
 		date > ${KERNEL_REGISTER_MARK}
 	fi
-	if [ ! -f "/tmp/qemu-arm-static" ]; then
-		RUN_CMD cp $(which qemu-arm-static) /tmp
+	if [ -f "${ROOTFS}/usr/bin/qemu-arm-static" ]; then
+		RUN_CMD touch ${ROOTFS}/usr/bin/qemu-arm-static.copy
+		RUN_CMD mv ${ROOTFS}/usr/bin/qemu-arm-static ${ROOTFS}/usr/bin/qemu-arm-static.bak
 	fi
+	RUN_CMD cp $(which qemu-arm-static) ${ROOTFS}/usr/bin/
 }
 
 
@@ -93,12 +129,18 @@ function post_rootfs {
 		*)
 			;;
 	esac
+
+	RUN_CMD rm -f ${ROOTFS}/usr/bin/qemu-arm-static
+	if [ -f "${ROOTFS}/usr/bin/qemu-arm-static.copy" ]; then
+		RUN_CMD mv ${ROOTFS}/usr/bin/qemu-arm-static.bak ${ROOTFS}/usr/bin/qemu-arm-static
+		RUN_CMD rm -f ${ROOTFS}/usr/bin/qemu-arm-static.copy
+	fi
 }
 
 
 function chroot_with_shell {
 	pre_rootfs ${ROOTFS_DIR}
-	chroot ${ROOTFS_DIR} /bin/bash
+	chroot ${ROOTFS_DIR} ${ROOTFS_SHELL}
 	post_rootfs ${ROOTFS_DIR}
 }
 
@@ -110,7 +152,7 @@ function chroot_with_script {
 		local COMMAND=$@
 		pre_rootfs ${ROOTFS_DIR}
 		INFO "running $(YELLOW ${COMMAND})"
-		chroot ${ROOTFS_DIR} /bin/bash -c "${COMMAND}"
+		chroot ${ROOTFS_DIR} ${ROOTFS_SHELL} -c "${COMMAND}"
 		post_rootfs ${ROOTFS_DIR}
 	else
 		local SCRIPT=${OPTS}
